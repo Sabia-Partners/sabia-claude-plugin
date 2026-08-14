@@ -146,6 +146,29 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(await readSettings()).toEqual({});
   });
 
+  it("does not snapshot its own block when the state file is lost", async () => {
+    await writeFile(
+      settingsPath,
+      JSON.stringify({ env: { OTEL_LOGS_EXPORTER: "otlp" } }),
+    );
+    await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
+
+    // The state file is the only record of what the user had; losing it must
+    // not turn Sabia's own values into "what was there before".
+    await rm(statePath);
+    await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
+    await sabia("disconnect", "--local-only");
+
+    const restored = await readSettings();
+    // Without the ownership check this restores Sabia's revoked exporter.
+    expect(restored.env?.OTEL_EXPORTER_OTLP_HEADERS).toBeUndefined();
+    expect(restored.env?.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).toBeUndefined();
+    expect(restored.env?.CLAUDE_CODE_ENABLE_TELEMETRY).toBeUndefined();
+    // The user's own value is genuinely unrecoverable once that state is gone,
+    // so it is dropped rather than replaced with a wrong guess.
+    expect(restored.env?.OTEL_LOGS_EXPORTER).toBeUndefined();
+  });
+
   it("reports status without printing the ingestion key", async () => {
     await sabia(
       "configure",

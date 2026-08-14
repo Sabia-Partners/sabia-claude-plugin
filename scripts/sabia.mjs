@@ -219,9 +219,16 @@ async function installEnv(input) {
   // Capture the user's own values once. Reconnecting to rotate a key must not
   // record Sabia's own block as "what was there before", or disconnect would
   // restore a revoked exporter instead of removing it.
-  const previousEnv =
-    plainObject(input.existingState?.previousEnv)
-      ? input.existingState.previousEnv
+  //
+  // The stored state is not the only guard, because it can go missing: the
+  // state file gets deleted, or `writeSettings` succeeds and the `atomicWrite`
+  // after it does not. `isManaged` is the ownership check that does not depend
+  // on it — if the block is already ours, there is nothing of the user's left
+  // in these keys to preserve, so previous is absent rather than recaptured.
+  const previousEnv = plainObject(input.existingState?.previousEnv)
+    ? input.existingState.previousEnv
+    : isManaged(env)
+      ? absentPrevious()
       : capturePrevious(env);
 
   Object.assign(env, managedEnv(input.endpoint, input.ingestionKey));
@@ -268,6 +275,11 @@ function managedEnv(endpoint, ingestionKey) {
     // the ingestion key cannot travel with a signal Sabia did not ask for.
     OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${ingestionKey}`,
   };
+}
+
+/** Every managed key recorded as absent, so disconnect deletes rather than restores. */
+function absentPrevious() {
+  return Object.fromEntries(MANAGED_KEYS.map((key) => [key, null]));
 }
 
 function capturePrevious(env) {
