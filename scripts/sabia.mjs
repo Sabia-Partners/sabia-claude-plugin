@@ -1,0 +1,406 @@
+#!/usr/bin/env node
+
+import { spawn } from "node:child_process";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { hostname, homedir } from "node:os";
+import { dirname, join } from "node:path";
+
+import {
+  approvedHandoff,
+  connectHandoff,
+  readResponseJson,
+} from "./sabia-http.mjs";
+
+const DEFAULT_BASE_URL = "https://app1.sabiapartners.ca";
+
+/**
+ * Every variable this plugin owns.
+ *
+ * Codex's config is TOML and can be fenced off with comment markers; Claude
+ * Code's settings are JSON, where a comment would not survive a round trip. So
+ * the managed region is this key list instead: connect records what each key
+ * held beforehand, and disconnect puts those values back. Someone already
+ * exporting telemetry elsewhere gets their own configuration returned rather
+ * than deleted.
+ */
+const MANAGED_KEYS = [
+  "CLAUDE_CODE_ENABLE_TELEMETRY",
+  "OTEL_METRICS_EXPORTER",
+  "OTEL_LOGS_EXPORTER",
+  "OTEL_TRACES_EXPORTER",
+  "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL",
+  "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
+  "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+  "OTEL_EXPORTER_OTLP_HEADERS",
+];
+
+/**
+ * Sabia's own key format, which is what makes the header a reliable ownership
+ * marker: nothing but this plugin writes a `sbia_ing_` bearer token into Claude
+ * Code's settings, so finding one is proof the block is ours to restore.
+ */
+const INGESTION_KEY_PATTERN = /^sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43}$/;
+const MANAGED_HEADER_PATTERN = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
+
+const { command, options } = parseArguments(process.argv.slice(2));
+const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+const settingsPath = options.settings || join(claudeHome, "settings.json");
+const statePath = options.state || join(claudeHome, "sabia-otel-state.json");
+
+try {
+  switch (command) {
+    case "connect":
+      await connect();
+      break;
+    case "configure":
+      await configureHeadless();
+      break;
+    case "disconnect":
+      await disconnect();
+      break;
+    case "status":
+      await status();
+      break;
+    default:
+      usage();
+      process.exitCode = 2;
+  }
+} catch (error) {
+  process.stderr.write(`Sabia: ${error instanceof Error ? error.message : "Unexpected failure"}\n`);
+  process.exitCode = 1;
+}
+
+async function connect() {
+  const baseUrl = normalizedBaseUrl(
+    options["base-url"] || process.env.SABIA_APP_URL || DEFAULT_BASE_URL,
+  );
+  const existingState = await readJson(statePath);
+  const deviceId = existingState?.deviceId || randomUUID();
+  const verifier = randomBytes(32).toString("base64url");
+  const codeChallenge = createHash("sha256").update(verifier).digest("hex");
+
+  const response = await fetch(new URL("/api/v1/telemetry/connect", baseUrl), {
+    method: "POST",
+    redirect: "manual",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "claude_code",
+      deviceId,
+      deviceName: options["device-name"] || hostname() || "Claude Code device",
+      codeChallenge,
+    }),
+  });
+  const handoff = connectHandoff(
+    await readResponseJson(response, "start browser connection"),
+  );
+  process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
+
+  if (!options["no-open"]) {
+    openBrowser(handoff.verificationUri);
+  }
+
+  const approved = await pollForApproval(baseUrl, handoff, verifier);
+  await installEnv({
+    deviceId,
+    endpoint: approved.otlpMetricsEndpoint,
+    ingestionKey: approved.ingestionKey,
+    ingestionKeyId: approved.ingestionKeyId,
+    organizationId: approved.organizationId,
+    organizationName: approved.organizationName,
+    existingState,
+  });
+
+  process.stdout.write(
+    `Connected Claude Code telemetry to ${approved.organizationName}. Only token counts are exported — prompts, responses, and tool content are not. Start a new Claude Code session to pick up the exporter.\n`,
+  );
+}
+
+async function configureHeadless() {
+  const endpoint = options.endpoint;
+  const ingestionKey = options["ingestion-key"];
+  if (!endpoint || !ingestionKey) {
+    throw new Error("configure requires --endpoint and --ingestion-key");
+  }
+  // Rejected here rather than discovered later: a key in another format still
+  // installs a working-looking exporter, but leaves no marker, so `status` and
+  // `disconnect` would both report nothing is configured.
+  if (!INGESTION_KEY_PATTERN.test(ingestionKey)) {
+    throw new Error("--ingestion-key must be a Sabia ingestion key");
+  }
+  new URL(endpoint);
+
+  const existingState = await readJson(statePath);
+  await installEnv({
+    deviceId: existingState?.deviceId || randomUUID(),
+    endpoint,
+    ingestionKey,
+    ingestionKeyId: null,
+    organizationId: null,
+    organizationName: options.organization || "headless environment",
+    existingState,
+  });
+  process.stdout.write("Configured Claude Code native OTel metrics export.\n");
+}
+
+async function disconnect() {
+  const state = await readJson(statePath);
+  const settings = await readSettings();
+  const env = plainObject(settings.env) ? { ...settings.env } : null;
+  if (!env || !isManaged(env)) {
+    process.stdout.write("Sabia telemetry is not configured in these Claude Code settings.\n");
+    return;
+  }
+
+  if (!options["local-only"]) {
+    const token = env.OTEL_EXPORTER_OTLP_HEADERS.match(MANAGED_HEADER_PATTERN)?.[1];
+    const endpoint = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+    if (!token || !endpoint) {
+      throw new Error("the managed exporter is incomplete; revoke it in Sabia Settings before removing it locally");
+    }
+
+    const response = await fetch(new URL("/api/v1/telemetry/connection", endpoint), {
+      method: "DELETE",
+      redirect: "manual",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    // 204 success and 401 already-revoked both continue to local cleanup.
+    if (response.status !== 204 && response.status !== 401) {
+      await readResponseJson(response, "revoke this device");
+    }
+  }
+
+  const previousEnv = plainObject(state?.previousEnv) ? state.previousEnv : {};
+  for (const key of MANAGED_KEYS) {
+    const value = previousEnv[key];
+    if (typeof value === "string") {
+      env[key] = value;
+    } else {
+      delete env[key];
+    }
+  }
+
+  if (Object.keys(env).length > 0) {
+    settings.env = env;
+  } else {
+    // Do not leave behind an empty block that only exists because of Sabia.
+    delete settings.env;
+  }
+
+  await writeSettings(settings);
+  await atomicWrite(
+    statePath,
+    JSON.stringify({ deviceId: state?.deviceId || randomUUID() }, null, 2) + "\n",
+  );
+  process.stdout.write("Disconnected Sabia and restored the previous Claude Code telemetry settings.\n");
+}
+
+async function status() {
+  const settings = await readSettings();
+  const env = plainObject(settings.env) ? settings.env : {};
+  const state = await readJson(statePath);
+  if (!isManaged(env)) {
+    process.stdout.write("Sabia telemetry: disconnected\n");
+    return;
+  }
+
+  process.stdout.write("Sabia telemetry: connected\n");
+  process.stdout.write(`Organization: ${state?.organizationName || "unknown"}\n`);
+  process.stdout.write(
+    `Endpoint: ${env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || "unknown"}\n`,
+  );
+  process.stdout.write("Exports: token metrics only (logs and traces off)\n");
+}
+
+async function installEnv(input) {
+  const settings = await readSettings();
+  const env = plainObject(settings.env) ? { ...settings.env } : {};
+
+  // Capture the user's own values once. Reconnecting to rotate a key must not
+  // record Sabia's own block as "what was there before", or disconnect would
+  // restore a revoked exporter instead of removing it.
+  const previousEnv =
+    plainObject(input.existingState?.previousEnv)
+      ? input.existingState.previousEnv
+      : capturePrevious(env);
+
+  Object.assign(env, managedEnv(input.endpoint, input.ingestionKey));
+  settings.env = env;
+
+  await writeSettings(settings);
+  await atomicWrite(
+    statePath,
+    JSON.stringify(
+      {
+        deviceId: input.deviceId,
+        ingestionKeyId: input.ingestionKeyId,
+        organizationId: input.organizationId,
+        organizationName: input.organizationName,
+        endpoint: input.endpoint,
+        previousEnv,
+        connectedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ) + "\n",
+  );
+}
+
+function managedEnv(endpoint, ingestionKey) {
+  return {
+    CLAUDE_CODE_ENABLE_TELEMETRY: "1",
+    OTEL_METRICS_EXPORTER: "otlp",
+    // Deliberately off: Claude Code's log records carry conversational context
+    // that Sabia has no reason to receive, and only the token metric is wanted.
+    OTEL_LOGS_EXPORTER: "none",
+    OTEL_TRACES_EXPORTER: "none",
+    OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "http/json",
+    // The full signal URL, not a base one — the metrics-specific variable is
+    // used verbatim rather than having "/v1/metrics" appended to it.
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: endpoint,
+    // Cumulative restates the running total on every export, so Sabia would
+    // double-count it against what it already stored. The normalizer rejects
+    // cumulative datapoints rather than guessing, which would look like silent
+    // data loss from here.
+    OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: "delta",
+    // The signal-agnostic header variable, which is the one Claude Code
+    // documents. Safe despite its breadth because logs and traces are off, so
+    // the ingestion key cannot travel with a signal Sabia did not ask for.
+    OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${ingestionKey}`,
+  };
+}
+
+function capturePrevious(env) {
+  const previous = {};
+  for (const key of MANAGED_KEYS) {
+    // null records "was absent", so disconnect deletes the key rather than
+    // restoring an empty string over it.
+    previous[key] = typeof env[key] === "string" ? env[key] : null;
+  }
+  return previous;
+}
+
+function isManaged(env) {
+  return (
+    typeof env.OTEL_EXPORTER_OTLP_HEADERS === "string" &&
+    MANAGED_HEADER_PATTERN.test(env.OTEL_EXPORTER_OTLP_HEADERS)
+  );
+}
+
+async function readSettings() {
+  const text = await readText(settingsPath);
+  if (!text.trim()) return {};
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    // Refusing beats rewriting: these settings are the user's, and a parse
+    // failure means anything written back would drop whatever was not
+    // understood.
+    throw new Error(`${settingsPath} is not valid JSON; fix it before connecting Sabia`);
+  }
+  if (!plainObject(parsed)) {
+    throw new Error(`${settingsPath} does not contain a settings object`);
+  }
+  return parsed;
+}
+
+async function writeSettings(settings) {
+  // Mode 0600 because the file now holds an ingestion key.
+  await atomicWrite(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+}
+
+async function pollForApproval(baseUrl, handoff, verifier) {
+  const expiresAt = new Date(handoff.expiresAt).getTime();
+  while (Date.now() < expiresAt) {
+    await delay(Math.max(1, handoff.intervalSeconds || 2) * 1_000);
+    const url = new URL(`/api/v1/telemetry/connect/${handoff.sessionId}`, baseUrl);
+    url.searchParams.set("verifier", verifier);
+    const response = await fetch(url, { redirect: "manual" });
+    if (response.status === 202) continue;
+    if (response.status === 410) throw new Error("the browser connection expired or was cancelled");
+    return approvedHandoff(
+      await readResponseJson(response, "complete browser connection"),
+    );
+  }
+  throw new Error("the browser connection expired");
+}
+
+function openBrowser(url) {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  const child = spawn(command, args, { detached: true, stdio: "ignore" });
+  child.on("error", () => undefined);
+  child.unref();
+}
+
+function parseArguments(args) {
+  const command = args[0] || "status";
+  const options = {};
+  for (let index = 1; index < args.length; index += 1) {
+    const argument = args[index];
+    if (!argument.startsWith("--")) throw new Error(`unexpected argument: ${argument}`);
+    const key = argument.slice(2);
+    if (["no-open", "local-only"].includes(key)) {
+      options[key] = true;
+    } else {
+      const value = args[index + 1];
+      if (!value || value.startsWith("--")) throw new Error(`--${key} requires a value`);
+      options[key] = value;
+      index += 1;
+    }
+  }
+  return { command, options };
+}
+
+function normalizedBaseUrl(value) {
+  const url = new URL(value);
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Sabia base URL must use HTTP or HTTPS");
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+function plainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+async function atomicWrite(path, contents) {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.sabia-${process.pid}-${Date.now()}.tmp`;
+  await writeFile(temporary, contents, { mode: 0o600 });
+  await rename(temporary, path);
+  await chmod(path, 0o600);
+}
+
+async function readText(path) {
+  return readFile(path, "utf8").catch((error) => {
+    if (error?.code === "ENOENT") return "";
+    throw error;
+  });
+}
+
+async function readJson(path) {
+  const value = await readText(path);
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    throw new Error(`could not read ${path}`);
+  }
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function usage() {
+  process.stdout.write(`Usage:
+  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open]
+  sabia.mjs status
+  sabia.mjs disconnect [--local-only]
+  sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME]
+`);
+}
