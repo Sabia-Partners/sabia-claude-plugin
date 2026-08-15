@@ -32,6 +32,14 @@ const MANAGED_KEYS = [
   "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL",
   "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
   "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
+  // Written only in raw-capture mode, but managed either way: the list is also
+  // what disconnect restores and what reconnecting without --raw-capture has
+  // to clear. A key that is only managed when it is set would survive a
+  // downgrade and keep exporting prompts to a metrics-only connection.
+  "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL",
+  "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+  "OTEL_LOG_USER_PROMPTS",
+  "OTEL_LOG_TOOL_DETAILS",
   "OTEL_EXPORTER_OTLP_HEADERS",
 ];
 
@@ -75,6 +83,7 @@ async function connect() {
   const baseUrl = normalizedBaseUrl(
     options["base-url"] || process.env.SABIA_APP_URL || DEFAULT_BASE_URL,
   );
+  const rawCapture = Boolean(options["raw-capture"]);
   const existingState = await readJson(statePath);
   const deviceId = existingState?.deviceId || randomUUID();
   const verifier = randomBytes(32).toString("base64url");
@@ -89,30 +98,43 @@ async function connect() {
       deviceId,
       deviceName: options["device-name"] || hostname() || "Claude Code device",
       codeChallenge,
+      // Asked for here and granted in the browser. Sabia records the answer on
+      // the ingestion key, so a connection made without this flag cannot start
+      // retaining envelopes later by changing what this machine sends.
+      rawCapture,
     }),
   });
   const handoff = connectHandoff(
     await readResponseJson(response, "start browser connection"),
   );
+  if (rawCapture) {
+    process.stdout.write(
+      "Raw capture requested: Claude Code will export prompt text, tool decisions and results, and session identifiers, and Sabia will retain the complete envelopes.\n",
+    );
+  }
   process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
 
   if (!options["no-open"]) {
     openBrowser(handoff.verificationUri);
   }
 
-  const approved = await pollForApproval(baseUrl, handoff, verifier);
+  const approved = await pollForApproval(baseUrl, handoff, verifier, rawCapture);
   await installEnv({
     deviceId,
-    endpoint: approved.otlpMetricsEndpoint,
+    metricsEndpoint: approved.otlpMetricsEndpoint,
+    logsEndpoint: approved.otlpLogsEndpoint,
     ingestionKey: approved.ingestionKey,
     ingestionKeyId: approved.ingestionKeyId,
     organizationId: approved.organizationId,
     organizationName: approved.organizationName,
+    rawCapture,
     existingState,
   });
 
   process.stdout.write(
-    `Connected Claude Code telemetry to ${approved.organizationName}. Only token counts are exported — prompts, responses, and tool content are not. Start a new Claude Code session to pick up the exporter.\n`,
+    rawCapture
+      ? `Connected Claude Code telemetry to ${approved.organizationName} with raw capture on. Prompts, tool decisions and results, and token counts are exported and retained. Start a new Claude Code session to pick up the exporter.\n`
+      : `Connected Claude Code telemetry to ${approved.organizationName}. Only token counts are exported — prompts, responses, and tool content are not. Start a new Claude Code session to pick up the exporter.\n`,
   );
 }
 
@@ -129,18 +151,27 @@ async function configureHeadless() {
     throw new Error("--ingestion-key must be a Sabia ingestion key");
   }
   new URL(endpoint);
+  const rawCapture = Boolean(options["raw-capture"]);
 
   const existingState = await readJson(statePath);
   await installEnv({
     deviceId: existingState?.deviceId || randomUUID(),
-    endpoint,
+    // One authenticated endpoint serves both signals, and a headless caller has
+    // only the one URL to give.
+    metricsEndpoint: endpoint,
+    logsEndpoint: endpoint,
     ingestionKey,
     ingestionKeyId: null,
     organizationId: null,
     organizationName: options.organization || "headless environment",
+    rawCapture,
     existingState,
   });
-  process.stdout.write("Configured Claude Code native OTel metrics export.\n");
+  process.stdout.write(
+    rawCapture
+      ? "Configured Claude Code native OTel metrics and event export. Sabia retains raw envelopes only if this key was approved for raw capture.\n"
+      : "Configured Claude Code native OTel metrics export.\n",
+  );
 }
 
 async function disconnect() {
@@ -209,7 +240,13 @@ async function status() {
   process.stdout.write(
     `Endpoint: ${env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT || "unknown"}\n`,
   );
-  process.stdout.write("Exports: token metrics only (logs and traces off)\n");
+  // Read from the settings rather than the state file: the settings are what
+  // Claude Code actually exports from, and the state file can go missing.
+  process.stdout.write(
+    env.OTEL_LOGS_EXPORTER === "otlp"
+      ? "Exports: token metrics and events, including prompt text and tool details (traces off)\n"
+      : "Exports: token metrics only (logs and traces off)\n",
+  );
 }
 
 async function installEnv(input) {
@@ -231,7 +268,18 @@ async function installEnv(input) {
       ? absentPrevious()
       : capturePrevious(env);
 
-  Object.assign(env, managedEnv(input.endpoint, input.ingestionKey));
+  // Assigned key by key rather than merged, so a managed key the current mode
+  // does not write is removed instead of surviving. Reconnecting without
+  // --raw-capture is a downgrade, and a stale OTEL_LOG_USER_PROMPTS=1 would
+  // keep sending prompt text to a connection that no longer retains it.
+  const managed = managedEnv(input);
+  for (const key of MANAGED_KEYS) {
+    if (key in managed) {
+      env[key] = managed[key];
+    } else {
+      delete env[key];
+    }
+  }
   settings.env = env;
 
   await writeSettings(settings);
@@ -243,7 +291,8 @@ async function installEnv(input) {
         ingestionKeyId: input.ingestionKeyId,
         organizationId: input.organizationId,
         organizationName: input.organizationName,
-        endpoint: input.endpoint,
+        endpoint: input.metricsEndpoint,
+        rawCapture: Boolean(input.rawCapture),
         previousEnv,
         connectedAt: new Date().toISOString(),
       },
@@ -253,28 +302,41 @@ async function installEnv(input) {
   );
 }
 
-function managedEnv(endpoint, ingestionKey) {
-  return {
+function managedEnv(input) {
+  const env = {
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
     OTEL_METRICS_EXPORTER: "otlp",
-    // Deliberately off: Claude Code's log records carry conversational context
-    // that Sabia has no reason to receive, and only the token metric is wanted.
-    OTEL_LOGS_EXPORTER: "none",
+    // Claude Code's log records carry prompt and tool content, so they are off
+    // unless this connection was explicitly approved for raw capture.
+    OTEL_LOGS_EXPORTER: input.rawCapture ? "otlp" : "none",
     OTEL_TRACES_EXPORTER: "none",
     OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "http/json",
     // The full signal URL, not a base one — the metrics-specific variable is
     // used verbatim rather than having "/v1/metrics" appended to it.
-    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: endpoint,
+    OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: input.metricsEndpoint,
     // Cumulative restates the running total on every export, so Sabia would
     // double-count it against what it already stored. The normalizer rejects
     // cumulative datapoints rather than guessing, which would look like silent
     // data loss from here.
     OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: "delta",
     // The signal-agnostic header variable, which is the one Claude Code
-    // documents. Safe despite its breadth because logs and traces are off, so
-    // the ingestion key cannot travel with a signal Sabia did not ask for.
-    OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${ingestionKey}`,
+    // documents. It carries the key to whichever signals are enabled, which is
+    // exactly the set Sabia asked for: metrics always, logs only when this
+    // connection was approved for them.
+    OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${input.ingestionKey}`,
   };
+
+  if (input.rawCapture) {
+    env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL = "http/json";
+    env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = input.logsEndpoint;
+    env.OTEL_LOG_USER_PROMPTS = "1";
+    env.OTEL_LOG_TOOL_DETAILS = "1";
+    // OTEL_LOG_TOOL_CONTENT and OTEL_LOG_RAW_API_BODIES stay unset. They carry
+    // whole file contents and complete Messages API conversations, which is a
+    // separate privacy decision from the one this flag asks for.
+  }
+
+  return env;
 }
 
 /** Every managed key recorded as absent, so disconnect deletes rather than restores. */
@@ -323,7 +385,7 @@ async function writeSettings(settings) {
   await atomicWrite(settingsPath, JSON.stringify(settings, null, 2) + "\n");
 }
 
-async function pollForApproval(baseUrl, handoff, verifier) {
+async function pollForApproval(baseUrl, handoff, verifier, rawCapture) {
   const expiresAt = new Date(handoff.expiresAt).getTime();
   while (Date.now() < expiresAt) {
     await delay(Math.max(1, handoff.intervalSeconds || 2) * 1_000);
@@ -334,6 +396,7 @@ async function pollForApproval(baseUrl, handoff, verifier) {
     if (response.status === 410) throw new Error("the browser connection expired or was cancelled");
     return approvedHandoff(
       await readResponseJson(response, "complete browser connection"),
+      rawCapture,
     );
   }
   throw new Error("the browser connection expired");
@@ -354,7 +417,7 @@ function parseArguments(args) {
     const argument = args[index];
     if (!argument.startsWith("--")) throw new Error(`unexpected argument: ${argument}`);
     const key = argument.slice(2);
-    if (["no-open", "local-only"].includes(key)) {
+    if (["no-open", "local-only", "raw-capture"].includes(key)) {
       options[key] = true;
     } else {
       const value = args[index + 1];
@@ -410,9 +473,12 @@ function delay(milliseconds) {
 
 function usage() {
   process.stdout.write(`Usage:
-  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open]
+  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--raw-capture]
   sabia.mjs status
   sabia.mjs disconnect [--local-only]
-  sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME]
+  sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--raw-capture]
+
+  --raw-capture exports prompt text and tool details in addition to token
+  counts, and asks Sabia to retain the complete OpenTelemetry envelopes.
 `);
 }
