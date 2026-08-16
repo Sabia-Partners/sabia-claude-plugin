@@ -40,7 +40,7 @@ Run `node <plugin-root>/scripts/sabia.mjs status`. Never print or copy the full 
 
 ## Disconnect
 
-Run `node <plugin-root>/scripts/sabia.mjs disconnect`. It revokes the current key before restoring whatever the managed variables held beforehand. If Sabia is unreachable, leave the configuration intact and explain that the user can retry or revoke the device from Sabia Settings. Use `--local-only` only when the user explicitly wants to remove local configuration without server revocation.
+Run `node <plugin-root>/scripts/sabia.mjs disconnect`. It revokes the current key before restoring whatever the managed variables held beforehand. If Sabia is unreachable, leave the configuration intact and explain that the user can retry or revoke the device from Sabia Usage Connections. Use `--local-only` only when the user explicitly wants to remove local configuration without server revocation.
 
 ## Safety
 

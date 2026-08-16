@@ -187,7 +187,7 @@ async function disconnect() {
     const token = env.OTEL_EXPORTER_OTLP_HEADERS.match(MANAGED_HEADER_PATTERN)?.[1];
     const endpoint = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
     if (!token || !endpoint) {
-      throw new Error("the managed exporter is incomplete; revoke it in Sabia Settings before removing it locally");
+      throw new Error("the managed exporter is incomplete; revoke it in Sabia Usage Connections before removing it locally");
     }
 
     const response = await fetch(new URL("/api/v1/telemetry/connection", endpoint), {
