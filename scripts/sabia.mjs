@@ -40,6 +40,14 @@ const MANAGED_KEYS = [
   "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
   "OTEL_LOG_USER_PROMPTS",
   "OTEL_LOG_TOOL_DETAILS",
+  // Written only for the tool-output grant (SAB-81); managed either way so a
+  // reconnect without --tool-output stops the trace export instead of leaving
+  // it running against a connection that no longer accepts it.
+  "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA",
+  "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL",
+  "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+  "OTEL_LOG_TOOL_CONTENT",
+  "OTEL_LOG_ASSISTANT_RESPONSES",
   "OTEL_EXPORTER_OTLP_HEADERS",
 ];
 
@@ -84,6 +92,7 @@ async function connect() {
     options["base-url"] || process.env.SABIA_APP_URL || DEFAULT_BASE_URL,
   );
   const rawCapture = Boolean(options["raw-capture"]);
+  const traceCapture = Boolean(options["tool-output"]);
   const existingState = await readJson(statePath);
   const deviceId = existingState?.deviceId || randomUUID();
   const verifier = randomBytes(32).toString("base64url");
@@ -102,6 +111,9 @@ async function connect() {
       // the ingestion key, so a connection made without this flag cannot start
       // retaining envelopes later by changing what this machine sends.
       rawCapture,
+      // Tool result bodies (SAB-81): its own grant, never implied by
+      // --raw-capture, and refused server-side for any other source.
+      traceCapture,
     }),
   });
   const handoff = connectHandoff(
@@ -110,6 +122,11 @@ async function connect() {
   if (rawCapture) {
     process.stdout.write(
       "Raw capture requested: Claude Code will export prompt text, tool decisions and results, and session identifiers, and Sabia will retain the complete envelopes.\n",
+    );
+  }
+  if (traceCapture) {
+    process.stdout.write(
+      "Tool output requested: Claude Code will export tool result bodies — command output, MCP responses, and possibly file contents — and Sabia will keep a reduced per-tool extract.\n",
     );
   }
   process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
@@ -123,11 +140,13 @@ async function connect() {
     deviceId,
     metricsEndpoint: approved.otlpMetricsEndpoint,
     logsEndpoint: approved.otlpLogsEndpoint,
+    tracesEndpoint: new URL("/api/v1/telemetry/traces", baseUrl).toString(),
     ingestionKey: approved.ingestionKey,
     ingestionKeyId: approved.ingestionKeyId,
     organizationId: approved.organizationId,
     organizationName: approved.organizationName,
     rawCapture,
+    traceCapture,
     existingState,
   });
 
@@ -309,7 +328,9 @@ function managedEnv(input) {
     // Claude Code's log records carry prompt and tool content, so they are off
     // unless this connection was explicitly approved for raw capture.
     OTEL_LOGS_EXPORTER: input.rawCapture ? "otlp" : "none",
-    OTEL_TRACES_EXPORTER: "none",
+    // Traces carry tool input/output bodies, so they are off unless this
+    // connection was approved for the tool-output grant (SAB-81).
+    OTEL_TRACES_EXPORTER: input.traceCapture ? "otlp" : "none",
     OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "http/json",
     // The full signal URL, not a base one — the metrics-specific variable is
     // used verbatim rather than having "/v1/metrics" appended to it.
@@ -331,9 +352,20 @@ function managedEnv(input) {
     env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = input.logsEndpoint;
     env.OTEL_LOG_USER_PROMPTS = "1";
     env.OTEL_LOG_TOOL_DETAILS = "1";
-    // OTEL_LOG_TOOL_CONTENT and OTEL_LOG_RAW_API_BODIES stay unset. They carry
-    // whole file contents and complete Messages API conversations, which is a
-    // separate privacy decision from the one this flag asks for.
+    // OTEL_LOG_TOOL_CONTENT and OTEL_LOG_RAW_API_BODIES stay unset here. They
+    // carry whole file contents and complete Messages API conversations, which
+    // is a separate privacy decision from the one this flag asks for.
+  }
+
+  if (input.traceCapture) {
+    env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA = "1";
+    env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "http/json";
+    env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = input.tracesEndpoint;
+    env.OTEL_LOG_TOOL_CONTENT = "1";
+    // Model-cited URLs on log events: cheap, and useful to Output extraction
+    // even before the trace path is exercised.
+    env.OTEL_LOG_ASSISTANT_RESPONSES = "1";
+    // OTEL_LOG_RAW_API_BODIES stays unset on every grant.
   }
 
   return env;
