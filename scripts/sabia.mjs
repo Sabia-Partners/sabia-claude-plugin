@@ -449,7 +449,7 @@ function parseArguments(args) {
     const argument = args[index];
     if (!argument.startsWith("--")) throw new Error(`unexpected argument: ${argument}`);
     const key = argument.slice(2);
-    if (["no-open", "local-only", "raw-capture"].includes(key)) {
+    if (["no-open", "local-only", "raw-capture", "tool-output"].includes(key)) {
       options[key] = true;
     } else {
       const value = args[index + 1];
