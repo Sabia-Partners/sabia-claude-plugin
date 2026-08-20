@@ -151,10 +151,29 @@ async function connect() {
   });
 
   process.stdout.write(
-    rawCapture
-      ? `Connected Claude Code telemetry to ${approved.organizationName} with raw capture on. Prompts, tool decisions and results, and token counts are exported and retained. Start a new Claude Code session to pick up the exporter.\n`
-      : `Connected Claude Code telemetry to ${approved.organizationName}. Only token counts are exported — prompts, responses, and tool content are not. Start a new Claude Code session to pick up the exporter.\n`,
+    `Connected Claude Code telemetry to ${approved.organizationName}. ${describeCapture({ rawCapture, traceCapture })} Start a new Claude Code session to pick up the exporter.\n`,
   );
+}
+
+/**
+ * What this connection actually exports, in one sentence.
+ *
+ * The two grants are independent, so there are four states and every surface
+ * has to agree on them. Describing capture from a single place is what stops
+ * `connect` claiming tool content is not exported while `--tool-output` is
+ * busy exporting it.
+ */
+function describeCapture({ rawCapture, traceCapture }) {
+  if (rawCapture && traceCapture) {
+    return "Prompts, tool decisions, tool result bodies, and token counts are exported; Sabia retains the envelopes and a reduced per-tool extract.";
+  }
+  if (rawCapture) {
+    return "Prompts, tool decisions, and token counts are exported and retained. Tool result bodies are not.";
+  }
+  if (traceCapture) {
+    return "Tool result bodies and token counts are exported, and Sabia keeps a reduced per-tool extract. Prompt text and assistant responses are not exported.";
+  }
+  return "Only token counts are exported — prompts, responses, and tool content are not.";
 }
 
 async function configureHeadless() {
@@ -262,9 +281,10 @@ async function status() {
   // Read from the settings rather than the state file: the settings are what
   // Claude Code actually exports from, and the state file can go missing.
   process.stdout.write(
-    env.OTEL_LOGS_EXPORTER === "otlp"
-      ? "Exports: token metrics and events, including prompt text and tool details (traces off)\n"
-      : "Exports: token metrics only (logs and traces off)\n",
+    `Exports: ${describeCapture({
+      rawCapture: env.OTEL_LOGS_EXPORTER === "otlp",
+      traceCapture: env.OTEL_TRACES_EXPORTER === "otlp",
+    })}\n`,
   );
 }
 
@@ -505,12 +525,19 @@ function delay(milliseconds) {
 
 function usage() {
   process.stdout.write(`Usage:
-  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--raw-capture]
+  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--raw-capture] [--tool-output]
   sabia.mjs status
   sabia.mjs disconnect [--local-only]
   sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--raw-capture]
 
-  --raw-capture exports prompt text and tool details in addition to token
+  Token counts are always exported. The two capture grants are independent and
+  can be combined; each is approved separately in the browser.
+
+  --raw-capture exports prompt text and tool decisions in addition to token
   counts, and asks Sabia to retain the complete OpenTelemetry envelopes.
+
+  --tool-output exports tool result bodies — command output, MCP responses —
+  and asks Sabia to keep a reduced per-tool extract. File tool contents are
+  dropped before storage. Prompt text is not exported by this flag.
 `);
 }

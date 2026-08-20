@@ -281,8 +281,83 @@ describe("Sabia Claude Code plugin settings management", () => {
     );
 
     const { stdout } = await sabia("status");
-    expect(stdout).toMatch(/prompt text and tool details/i);
+    expect(stdout).toMatch(/prompts, tool decisions, and token counts/i);
+    // Raw capture alone does not export result bodies; saying otherwise would
+    // overstate what left the machine.
+    expect(stdout).toMatch(/tool result bodies are not/i);
     expect(stdout).not.toContain(ingestionKey);
+  });
+
+  /**
+   * The two grants are independent, so status has to read both exporters.
+   * Checking only OTEL_LOGS_EXPORTER told a trace-only connection that no tool
+   * content was exported while it was busy exporting it.
+   */
+  async function configureWithExporters(exporters: {
+    logs: "otlp" | "none";
+    traces: "otlp" | "none";
+  }) {
+    await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
+    const settings = await readSettings();
+    await writeFile(
+      settingsPath,
+      JSON.stringify({
+        ...settings,
+        env: {
+          ...settings.env,
+          OTEL_LOGS_EXPORTER: exporters.logs,
+          OTEL_TRACES_EXPORTER: exporters.traces,
+        },
+      }),
+    );
+  }
+
+  it("tells a trace-only connection that tool result bodies are exported", async () => {
+    await configureWithExporters({ logs: "none", traces: "otlp" });
+
+    const { stdout } = await sabia("status");
+
+    expect(stdout).toMatch(/tool result bodies and token counts are exported/i);
+    // The regression: a trace-only connection used to be told the opposite.
+    expect(stdout).not.toMatch(/only token counts are exported/i);
+    expect(stdout).not.toMatch(/tool content are not/i);
+    // Prompt text genuinely is not exported by this grant.
+    expect(stdout).toMatch(/prompt text and assistant responses are not/i);
+  });
+
+  it("describes a combined connection as exporting both", async () => {
+    await configureWithExporters({ logs: "otlp", traces: "otlp" });
+
+    const { stdout } = await sabia("status");
+
+    expect(stdout).toMatch(/prompts, tool decisions, tool result bodies/i);
+    expect(stdout).not.toMatch(/are not exported/i);
+  });
+
+  it("still reports a metrics-only connection as token counts alone", async () => {
+    await configureWithExporters({ logs: "none", traces: "none" });
+
+    const { stdout } = await sabia("status");
+
+    expect(stdout).toMatch(/only token counts are exported/i);
+  });
+
+  it("documents the tool-output grant in its help", async () => {
+    const { stdout } = await run(process.execPath, [scriptPath, "help"]).catch(
+      (error: { stdout: string }) => error,
+    );
+
+    expect(stdout).toContain("--tool-output");
+    expect(stdout).toMatch(/tool result bodies/i);
+    expect(stdout).toContain("connect [--base-url URL]");
+  });
+
+  it("describes connect and status from the same source", async () => {
+    // connect used to branch on rawCapture alone, so the two surfaces could
+    // disagree about the same connection.
+    const script = await readFile(scriptPath, "utf8");
+    const describerCalls = script.match(/describeCapture\(/g) ?? [];
+    expect(describerCalls.length).toBeGreaterThanOrEqual(3);
   });
 
   it("refuses to rewrite settings it could not parse", async () => {
