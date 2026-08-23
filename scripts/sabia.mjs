@@ -190,25 +190,27 @@ async function configureHeadless() {
   }
   new URL(endpoint);
   const rawCapture = Boolean(options["raw-capture"]);
+  const traceCapture = Boolean(options["tool-output"]);
 
   const existingState = await readJson(statePath);
   await installEnv({
     deviceId: existingState?.deviceId || randomUUID(),
     // One authenticated endpoint serves both signals, and a headless caller has
-    // only the one URL to give.
+    // only the one URL to give. Traces have their own route, derived from the
+    // same origin.
     metricsEndpoint: endpoint,
     logsEndpoint: endpoint,
+    tracesEndpoint: new URL("/api/v1/telemetry/traces", endpoint).toString(),
     ingestionKey,
     ingestionKeyId: null,
     organizationId: null,
     organizationName: options.organization || "headless environment",
     rawCapture,
+    traceCapture,
     existingState,
   });
   process.stdout.write(
-    rawCapture
-      ? "Configured Claude Code native OTel metrics and event export. Sabia retains raw envelopes only if this key was approved for raw capture.\n"
-      : "Configured Claude Code native OTel metrics export.\n",
+    `Configured Claude Code native OTel export. ${describeCapture({ rawCapture, traceCapture })} Sabia honours each grant only if this key was approved for it.\n`,
   );
 }
 
@@ -382,10 +384,15 @@ function managedEnv(input) {
     env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "http/json";
     env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = input.tracesEndpoint;
     env.OTEL_LOG_TOOL_CONTENT = "1";
-    // Model-cited URLs on log events: cheap, and useful to Output extraction
-    // even before the trace path is exercised.
-    env.OTEL_LOG_ASSISTANT_RESPONSES = "1";
-    // OTEL_LOG_RAW_API_BODIES stays unset on every grant.
+    // The command line (bash_command / full_command) is gated by tool
+    // details, not tool content — verified against Claude Code 2.1.226.
+    // Without it, Sabia cannot tell `gh pr create` output from `gh pr list`
+    // output, and the fail-closed evidence gate identifies nothing.
+    env.OTEL_LOG_TOOL_DETAILS = "1";
+    // OTEL_LOG_ASSISTANT_RESPONSES stays unset: this grant's consent copy
+    // says prompt text and assistant responses are not exported, and traces
+    // gate response text on that flag. OTEL_LOG_RAW_API_BODIES stays unset
+    // on every grant.
   }
 
   return env;
@@ -528,7 +535,7 @@ function usage() {
   sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--raw-capture] [--tool-output]
   sabia.mjs status
   sabia.mjs disconnect [--local-only]
-  sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--raw-capture]
+  sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--raw-capture] [--tool-output]
 
   Token counts are always exported. The two capture grants are independent and
   can be combined; each is approved separately in the browser.
@@ -536,8 +543,10 @@ function usage() {
   --raw-capture exports prompt text and tool decisions in addition to token
   counts, and asks Sabia to retain the complete OpenTelemetry envelopes.
 
-  --tool-output exports tool result bodies — command output, MCP responses —
-  and asks Sabia to keep a reduced per-tool extract. File tool contents are
-  dropped before storage. Prompt text is not exported by this flag.
+  --tool-output exports tool result bodies — command output and the command
+  lines that produced it — and asks Sabia to keep a reduced per-tool extract.
+  File tool contents are dropped before storage. Prompt text and assistant
+  responses are not exported by this flag. Claude Code does not export MCP
+  tool result bodies, so MCP-created artifacts are not identifiable this way.
 `);
 }

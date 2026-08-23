@@ -230,6 +230,55 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(env.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE).toBe("delta");
   });
 
+  it("adds the trace exporter and its gates only for the tool-output grant", async () => {
+    await sabia(
+      "configure",
+      "--endpoint",
+      endpoint,
+      "--ingestion-key",
+      ingestionKey,
+      "--tool-output",
+    );
+
+    const env = (await readSettings()).env ?? {};
+    expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
+    expect(env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA).toBe("1");
+    expect(env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL).toBe("http/json");
+    expect(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(
+      new URL("/api/v1/telemetry/traces", endpoint).toString(),
+    );
+    expect(env.OTEL_LOG_TOOL_CONTENT).toBe("1");
+    // The command line is gated by tool details, and without it the
+    // fail-closed shell-evidence gate identifies nothing (SAB-100).
+    expect(env.OTEL_LOG_TOOL_DETAILS).toBe("1");
+    // The grant's consent copy says prompts and assistant responses are not
+    // exported, so neither gate may be set.
+    expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
+    expect(env.OTEL_LOG_ASSISTANT_RESPONSES).toBeUndefined();
+    expect(env.OTEL_LOG_RAW_API_BODIES).toBeUndefined();
+    // Logs stay off: tool output is its own grant, not raw capture.
+    expect(env.OTEL_LOGS_EXPORTER).toBe("none");
+  });
+
+  it("clears the trace exporter when reconnecting without tool output", async () => {
+    await sabia(
+      "configure",
+      "--endpoint",
+      endpoint,
+      "--ingestion-key",
+      ingestionKey,
+      "--tool-output",
+    );
+    await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
+
+    const env = (await readSettings()).env ?? {};
+    expect(env.OTEL_TRACES_EXPORTER).toBe("none");
+    expect(env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA).toBeUndefined();
+    expect(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBeUndefined();
+    expect(env.OTEL_LOG_TOOL_CONTENT).toBeUndefined();
+    expect(env.OTEL_LOG_TOOL_DETAILS).toBeUndefined();
+  });
+
   it("clears the event exporter when reconnecting without raw capture", async () => {
     await sabia(
       "configure",
