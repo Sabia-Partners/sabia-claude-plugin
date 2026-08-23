@@ -547,6 +547,7 @@ function usage() {
   lines that produced it — and asks Sabia to keep a reduced per-tool extract.
   File tool contents are dropped before storage. Prompt text and assistant
   responses are not exported by this flag. Claude Code does not export MCP
-  tool result bodies, so MCP-created artifacts are not identifiable this way.
+  tool result bodies today, so an MCP create identified only by its response
+  cannot appear; MCP updates carrying the identifier in arguments still can.
 `);
 }

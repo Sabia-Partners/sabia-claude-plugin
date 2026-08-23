@@ -50,9 +50,13 @@ reconnecting without the flag turns the trace export off. The two flags are
 independent and can be combined.
 
 Two expectations to set: only work done in **new** sessions after connecting
-can appear, and artifacts created through MCP tools cannot be identified —
-Claude Code does not export MCP result bodies — so GitHub work should go
-through the `gh` CLI to be visible.
+can appear, and identification depends on where the artifact's identity shows
+up in what Claude Code exports. Command output is exported, so a PR or issue
+created at the command line is identifiable from its stdout. MCP tool *create*
+results are not exported by the client today, so a create whose only identity
+is in the response cannot be identified; MCP *updates* that carry the
+identifier in their arguments (an `issue_number`, a `pull_number`) still can.
+This is a Claude Code client limitation, not a Sabia rule choice.
 
 ## Status
 
