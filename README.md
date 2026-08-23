@@ -9,8 +9,16 @@ From the plugin directory:
 ```text
 node scripts/sabia.mjs connect
 node scripts/sabia.mjs status
+node scripts/sabia.mjs sync
 node scripts/sabia.mjs disconnect
 ```
+
+The plugin also runs `sync --quiet` from a SessionStart hook. Capture grants
+are managed in Sabia — approved at connect, and changeable later by an owner
+or administrator in Settings → Usage Connections — and sync converges this
+machine on whatever is recorded there, so a grant changed in the app applies
+from the next session without anyone re-running connect. Sync never touches
+the ingestion key and stays silent when Sabia is unreachable.
 
 ## Raw capture (pre-production, opt-in)
 

@@ -1,5 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -389,6 +391,162 @@ describe("Sabia Claude Code plugin settings management", () => {
     const { stdout } = await sabia("status");
 
     expect(stdout).toMatch(/only token counts are exported/i);
+  });
+
+  describe("sync", () => {
+    let server: Server;
+    let serverEndpoint: string;
+    let grants: { rawCapture: boolean; traceCapture: boolean } | "revoked";
+    let grantReads: number;
+
+    beforeEach(async () => {
+      grants = { rawCapture: false, traceCapture: false };
+      grantReads = 0;
+      server = createServer((request, response) => {
+        if (request.url === "/api/v1/telemetry/connection") {
+          grantReads += 1;
+          if (grants === "revoked") {
+            response.writeHead(401, { "content-type": "application/json" });
+            response.end(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "revoked" } }));
+            return;
+          }
+          if (request.headers.authorization !== `Bearer ${ingestionKey}`) {
+            response.writeHead(401, { "content-type": "application/json" });
+            response.end(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "bad key" } }));
+            return;
+          }
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({
+              source: "claude_code",
+              ...grants,
+              otlpMetricsEndpoint: `${serverEndpoint}/api/v1/telemetry/otlp`,
+              otlpLogsEndpoint: `${serverEndpoint}/api/v1/telemetry/otlp`,
+              tracesEndpoint: `${serverEndpoint}/api/v1/telemetry/traces`,
+            }),
+          );
+          return;
+        }
+        response.writeHead(404);
+        response.end();
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      serverEndpoint = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    });
+
+    it("converges the device on a grant widened in the app", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      grants = { rawCapture: false, traceCapture: true };
+
+      const { stdout } = await sabia("sync");
+
+      expect(stdout).toContain("updated this device's capture");
+      const env = (await readSettings()).env ?? {};
+      expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
+      expect(env.OTEL_LOG_TOOL_CONTENT).toBe("1");
+      expect(env.OTEL_LOG_TOOL_DETAILS).toBe("1");
+      expect(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(
+        `${serverEndpoint}/api/v1/telemetry/traces`,
+      );
+      // The key is untouched: sync converges configuration, never credentials.
+      expect(env.OTEL_EXPORTER_OTLP_HEADERS).toContain(ingestionKey);
+    });
+
+    it("converges the device on a grant narrowed in the app", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+        "--tool-output",
+      );
+      grants = { rawCapture: false, traceCapture: false };
+
+      await sabia("sync");
+
+      const env = (await readSettings()).env ?? {};
+      expect(env.OTEL_TRACES_EXPORTER).toBe("none");
+      expect(env.OTEL_LOG_TOOL_CONTENT).toBeUndefined();
+      expect(env.OTEL_LOG_TOOL_DETAILS).toBeUndefined();
+    });
+
+    it("stays quiet and changes nothing when already in sync", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      const before = JSON.stringify(await readSettings());
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      expect(stdout).toBe("");
+      expect(grantReads).toBe(1);
+      expect(JSON.stringify(await readSettings())).toBe(before);
+    });
+
+    it("reports a revoked connection without deleting the local block", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      grants = "revoked";
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      // Removal is disconnect's job; sync only says what happened.
+      expect(stdout).toContain("revoked");
+      expect((await readSettings()).env?.OTEL_METRICS_EXPORTER).toBe("otlp");
+    });
+
+    it("leaves everything alone when Sabia is unreachable", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      const before = JSON.stringify(await readSettings());
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+
+      const { stdout } = await sabia("sync", "--quiet");
+      expect(stdout).toBe("");
+      expect(JSON.stringify(await readSettings())).toBe(before);
+
+      // afterEach closes the server; reopen so it has one to close.
+      server = createServer(() => {});
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    });
+
+    it("does nothing on an unmanaged machine", async () => {
+      await writeFile(settingsPath, JSON.stringify({ env: { PATH: "/usr/bin" } }));
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      expect(stdout).toBe("");
+      expect(grantReads).toBe(0);
+    });
   });
 
   it("documents the tool-output grant in its help", async () => {

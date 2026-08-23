@@ -78,6 +78,9 @@ try {
     case "status":
       await status();
       break;
+    case "sync":
+      await sync();
+      break;
     default:
       usage();
       process.exitCode = 2;
@@ -290,6 +293,93 @@ async function status() {
   );
 }
 
+/**
+ * Converges this device on the grants the app has recorded (SAB-102).
+ *
+ * The grant is decided in Sabia — at approval, or later by an owner or
+ * administrator in Settings — and this reads it back and rewrites the managed
+ * env block to match. It runs from the plugin's SessionStart hook, so a grant
+ * changed in the app lands at the start of the next session without anyone
+ * touching this machine. Claude Code reads its environment once per session,
+ * which is why the change can never apply to the session already running.
+ *
+ * Quiet by design under `--quiet`: a hook that prints on every healthy
+ * session start is noise, and a hook that fails a session over a sync problem
+ * is worse — offline stays silent and the next session retries.
+ */
+async function sync() {
+  const quiet = Boolean(options.quiet);
+  const settings = await readSettings();
+  const env = plainObject(settings.env) ? { ...settings.env } : null;
+  if (!env || !isManaged(env)) {
+    if (!quiet) {
+      process.stdout.write("Sabia telemetry is not configured in these Claude Code settings.\n");
+    }
+    return;
+  }
+
+  const token = env.OTEL_EXPORTER_OTLP_HEADERS.match(MANAGED_HEADER_PATTERN)?.[1];
+  const metricsEndpoint = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
+  if (!token || !metricsEndpoint) return;
+
+  let response;
+  try {
+    response = await fetch(new URL("/api/v1/telemetry/connection", metricsEndpoint), {
+      redirect: "manual",
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    // Offline or slow: leave the current block alone; the next session retries.
+    return;
+  }
+
+  if (response.status === 401) {
+    // Revoked in the app. Removal is `disconnect`'s job — silently deleting
+    // the block here would erase the user's record of what was configured.
+    process.stdout.write(
+      "Sabia revoked this device's usage sharing. Run disconnect to clean up, or Connect Sabia to reconnect.\n",
+    );
+    return;
+  }
+
+  const granted = await readResponseJson(response, "read the connection grants");
+  const rawCapture = granted.rawCapture === true;
+  const traceCapture = granted.traceCapture === true;
+  const current = {
+    rawCapture: env.OTEL_LOGS_EXPORTER === "otlp",
+    traceCapture: env.OTEL_TRACES_EXPORTER === "otlp",
+  };
+  if (current.rawCapture === rawCapture && current.traceCapture === traceCapture) {
+    if (!quiet) process.stdout.write("Sabia telemetry is in sync with the app.\n");
+    return;
+  }
+
+  const state = await readJson(statePath);
+  await installEnv({
+    deviceId: state?.deviceId || randomUUID(),
+    metricsEndpoint,
+    logsEndpoint:
+      typeof granted.otlpLogsEndpoint === "string"
+        ? granted.otlpLogsEndpoint
+        : metricsEndpoint,
+    tracesEndpoint:
+      typeof granted.tracesEndpoint === "string"
+        ? granted.tracesEndpoint
+        : new URL("/api/v1/telemetry/traces", metricsEndpoint).toString(),
+    ingestionKey: token,
+    ingestionKeyId: state?.ingestionKeyId ?? null,
+    organizationId: state?.organizationId ?? null,
+    organizationName: state?.organizationName || "unknown",
+    rawCapture,
+    traceCapture,
+    existingState: state,
+  });
+  process.stdout.write(
+    `Sabia updated this device's capture. ${describeCapture({ rawCapture, traceCapture })} The change applies from the next Claude Code session.\n`,
+  );
+}
+
 async function installEnv(input) {
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : {};
@@ -476,7 +566,7 @@ function parseArguments(args) {
     const argument = args[index];
     if (!argument.startsWith("--")) throw new Error(`unexpected argument: ${argument}`);
     const key = argument.slice(2);
-    if (["no-open", "local-only", "raw-capture", "tool-output"].includes(key)) {
+    if (["no-open", "local-only", "raw-capture", "tool-output", "quiet"].includes(key)) {
       options[key] = true;
     } else {
       const value = args[index + 1];
@@ -534,11 +624,14 @@ function usage() {
   process.stdout.write(`Usage:
   sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--raw-capture] [--tool-output]
   sabia.mjs status
+  sabia.mjs sync [--quiet]
   sabia.mjs disconnect [--local-only]
   sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--raw-capture] [--tool-output]
 
   Token counts are always exported. The two capture grants are independent and
-  can be combined; each is approved separately in the browser.
+  can be combined; each is approved separately in the browser. Grants changed
+  later in Sabia Settings reach this device through sync, which the plugin
+  runs at every session start.
 
   --raw-capture exports prompt text and tool decisions in addition to token
   counts, and asks Sabia to retain the complete OpenTelemetry envelopes.

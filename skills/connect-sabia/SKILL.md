@@ -54,6 +54,15 @@ can appear, and artifacts created through MCP tools cannot be identified —
 Claude Code does not export MCP result bodies — so GitHub work should go
 through the `gh` CLI to be visible.
 
+## Sync
+
+Capture grants live in Sabia, and the plugin's SessionStart hook already runs
+`sabia.mjs sync --quiet` to converge this machine on them. Run
+`node <plugin-root>/scripts/sabia.mjs sync` by hand only when the user asks
+why a grant changed in the app has not applied yet — and remember the change
+lands at the start of the *next* session either way. Never edit the managed
+env variables directly to force a grant; the app is the source of truth.
+
 ## Status
 
 Run `node <plugin-root>/scripts/sabia.mjs status`. Never print or copy the full ingestion key.

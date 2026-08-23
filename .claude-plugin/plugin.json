@@ -1,6 +1,6 @@
 {
   "name": "sabia-claude-code-otel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Connect Claude Code native OpenTelemetry token usage to Sabia.",
   "author": {
     "name": "Sabia Partners",
@@ -9,5 +9,11 @@
   "homepage": "https://app1.sabiapartners.ca",
   "repository": "https://github.com/Sabia-Partners/dashboard",
   "license": "UNLICENSED",
-  "keywords": ["sabia", "claude-code", "opentelemetry", "usage", "telemetry"]
+  "keywords": [
+    "sabia",
+    "claude-code",
+    "opentelemetry",
+    "usage",
+    "telemetry"
+  ]
 }
