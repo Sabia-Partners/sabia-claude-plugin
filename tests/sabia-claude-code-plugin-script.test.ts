@@ -396,7 +396,10 @@ describe("Sabia Claude Code plugin settings management", () => {
   describe("sync", () => {
     let server: Server;
     let serverEndpoint: string;
-    let grants: { rawCapture: boolean; traceCapture: boolean } | "revoked";
+    let grants:
+      | { rawCapture: boolean; traceCapture: boolean }
+      | "revoked"
+      | "unavailable";
     let grantReads: number;
 
     beforeEach(async () => {
@@ -408,6 +411,13 @@ describe("Sabia Claude Code plugin settings management", () => {
           if (grants === "revoked") {
             response.writeHead(401, { "content-type": "application/json" });
             response.end(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "revoked" } }));
+            return;
+          }
+          if (grants === "unavailable") {
+            response.writeHead(503, { "content-type": "application/json" });
+            response.end(
+              JSON.stringify({ error: { code: "UNAVAILABLE", message: "try later" } }),
+            );
             return;
           }
           if (request.headers.authorization !== `Bearer ${ingestionKey}`) {
@@ -537,6 +547,26 @@ describe("Sabia Claude Code plugin settings management", () => {
       // afterEach closes the server; reopen so it has one to close.
       server = createServer(() => {});
       await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    });
+
+    it("leaves everything alone when Sabia answers with an error", async () => {
+      // Reachable but unhappy is the common case — a deploy, a rate limit, a
+      // gateway hiccup. The hook runs on every SessionStart, so this has to
+      // fail open like being offline does, not fail the session.
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      const before = JSON.stringify(await readSettings());
+      grants = "unavailable";
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      expect(stdout).toBe("");
+      expect(JSON.stringify(await readSettings())).toBe(before);
     });
 
     it("does nothing on an unmanaged machine", async () => {

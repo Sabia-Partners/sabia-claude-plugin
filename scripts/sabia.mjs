@@ -343,7 +343,22 @@ async function sync() {
     return;
   }
 
-  const granted = await readResponseJson(response, "read the connection grants");
+  let granted;
+  try {
+    granted = await readResponseJson(response, "read the connection grants");
+  } catch (error) {
+    // Reachable but unhappy — 403, 429, 5xx, a redirect, an unreadable body.
+    // Same posture as offline: leave the block alone and let the next session
+    // retry. This runs from SessionStart, so throwing here would fail the
+    // user's session over a response that is usually fine a minute later.
+    if (!quiet) {
+      process.stdout.write(
+        `Could not read Sabia's grants: ${error instanceof Error ? error.message : "unexpected failure"}. This device's capture settings are unchanged.\n`,
+      );
+    }
+    return;
+  }
+
   const rawCapture = granted.rawCapture === true;
   const traceCapture = granted.traceCapture === true;
   const current = {
