@@ -126,7 +126,7 @@ async function connect() {
   }
   if (traceCapture) {
     process.stdout.write(
-      "Tool output requested: Claude Code will export tool result bodies — command output, MCP responses, and possibly file contents — and Sabia will keep a reduced per-tool extract.\n",
+      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents; MCP response bodies are not exported by the client today — and Sabia will keep a reduced per-tool extract.\n",
     );
   }
   process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
