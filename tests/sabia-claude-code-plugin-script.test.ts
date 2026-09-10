@@ -15,7 +15,7 @@ const pluginRoot = join(process.cwd(), "plugins/sabia-claude-code-otel");
 const scriptPath = join(pluginRoot, "scripts/sabia.mjs");
 
 const ingestionKey = `sbia_ing_0123456789ab_${"A".repeat(43)}`;
-const endpoint = "https://app1.sabiapartners.ca/api/v1/telemetry/otlp";
+const endpoint = "https://app2.sabiapartners.ca/api/v1/telemetry/otlp";
 
 let workspace: string;
 let settingsPath: string;
@@ -58,9 +58,9 @@ describe("Sabia Claude Code plugin production connection", () => {
     const manifest = JSON.parse(manifestText) as { homepage: string };
 
     expect(script).toContain(
-      'const DEFAULT_BASE_URL = "https://app1.sabiapartners.ca";',
+      'const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";',
     );
-    expect(manifest.homepage).toBe("https://app1.sabiapartners.ca");
+    expect(manifest.homepage).toBe("https://app2.sabiapartners.ca");
   });
 
   it("handles disconnect redirects the same way as connect", async () => {

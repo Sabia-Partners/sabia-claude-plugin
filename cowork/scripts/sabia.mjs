@@ -20,7 +20,7 @@ import {
  * paste into those three fields. See docs/cowork-otel-connector.md.
  */
 
-const DEFAULT_BASE_URL = "https://app1.sabiapartners.ca";
+const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";
 
 const { command, options } = parseArguments(process.argv.slice(2));
 const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");

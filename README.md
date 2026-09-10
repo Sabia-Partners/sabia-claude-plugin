@@ -42,7 +42,7 @@ the flag clears the log exporter and returns to token counts only.
 Claude Code reads `env` when a session starts, so **start a new session** after connecting; the one that ran the command keeps exporting nothing.
 
 The browser connection uses the public Sabia app at
-`https://app1.sabiapartners.ca`. Set `SABIA_APP_URL` only when testing another
+`https://app2.sabiapartners.ca`. Set `SABIA_APP_URL` only when testing another
 Sabia deployment.
 
 Use `connect --base-url http://127.0.0.1:3000` against a local Sabia server. Reconnecting rotates the key with overlap. Disconnect revokes the current key before restoring whatever the managed variables held beforehand.

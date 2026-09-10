@@ -12,7 +12,7 @@ import {
   readResponseJson,
 } from "./sabia-http.mjs";
 
-const DEFAULT_BASE_URL = "https://app1.sabiapartners.ca";
+const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";
 
 /**
  * Every variable this plugin owns.
