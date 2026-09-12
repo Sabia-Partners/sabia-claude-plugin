@@ -10,7 +10,7 @@ no per-device exporter to configure, so this helper does two things:
 
 ```text
 node plugins/sabia-cowork-otel/scripts/sabia.mjs connect                 # token activity only
-node plugins/sabia-cowork-otel/scripts/sabia.mjs connect --tool-details  # + Google Drive Output capture
+node plugins/sabia-cowork-otel/scripts/sabia.mjs connect --tool-details  # + reduced tool evidence
 node plugins/sabia-cowork-otel/scripts/sabia.mjs settings                # print the admin values again
 node plugins/sabia-cowork-otel/scripts/sabia.mjs status
 node plugins/sabia-cowork-otel/scripts/sabia.mjs disconnect
@@ -25,3 +25,21 @@ has to include for arguments to arrive at all, is in
 The state file (`~/.claude/sabia-cowork-otel-state.json`, mode `0600`) holds
 the ingestion key because `settings`, `status`, and `disconnect` need it. Never
 paste it anywhere but the Cowork admin headers field.
+
+## Explicit Workspace Outputs
+
+Cowork telemetry does not currently provide sufficient result evidence for
+reliable automatic creation detection. Report a confirmed operation explicitly:
+
+```text
+node plugins/sabia-cowork-otel/scripts/sabia.mjs record-output --workflow-run-id <session.id> --kind document_create --external-id <drive-file-id>
+```
+
+Supported action kinds are `document_create`, `document_edit`,
+`document_comment`, `spreadsheet_create`, `spreadsheet_edit`,
+`spreadsheet_add_sheet`, `spreadsheet_comment`, `presentation_create`,
+`presentation_edit`, and `presentation_add_slide`. Comment actions use the returned parent-qualified
+`--external-id <drive-file-id>/comments/<comment-id>` (or `/replies/<reply-id>`).
+The helper preserves the workflow session identity and requires the existing
+Output capture grant. Generic document/spreadsheet/presentation claims are
+rejected; only report the specific operation after its success is confirmed.

@@ -40,6 +40,9 @@ try {
     case "disconnect":
       await disconnect();
       break;
+    case "record-output":
+      await recordOutput();
+      break;
     default:
       usage();
       process.exitCode = 2;
@@ -164,6 +167,66 @@ async function disconnect() {
   );
 }
 
+async function recordOutput() {
+  const state = await readJson(statePath);
+  if (!state?.ingestionKey) {
+    throw new Error("Cowork is not connected on this device; run connect first");
+  }
+
+  const workflowRunId = requiredOption("workflow-run-id");
+  const kind = requiredOption("kind");
+  const externalId = requiredOption("external-id");
+  const parents = {
+    document_create: "document", document_edit: "document", document_comment: "document",
+    spreadsheet_create: "spreadsheet", spreadsheet_edit: "spreadsheet", spreadsheet_add_sheet: "spreadsheet", spreadsheet_comment: "spreadsheet",
+    presentation_create: "presentation", presentation_edit: "presentation", presentation_add_slide: "presentation",
+  };
+  if (!Object.hasOwn(parents, kind)) throw new Error("--kind must identify the completed Workspace action, such as document_create or spreadsheet_edit");
+  const parentId = kind.endsWith("_comment") ? externalId.match(/^(.+)\/(?:comments|replies)\/[A-Za-z0-9_-]{1,128}$/)?.[1] : externalId;
+  if (!parentId) throw new Error("Comments require the returned parent-qualified comment or reply id");
+  const producedAt = options["produced-at"] || new Date().toISOString();
+  if (!Number.isFinite(Date.parse(producedAt))) {
+    throw new Error("--produced-at must be an ISO-8601 timestamp");
+  }
+  if (options.url && !isHttpUrl(options.url)) {
+    throw new Error("--url must use HTTP or HTTPS");
+  }
+
+  const response = await fetch(
+    new URL("/api/v1/outputs", state.baseUrl || DEFAULT_BASE_URL),
+    {
+      method: "POST",
+      redirect: "manual",
+      headers: {
+        authorization: `Bearer ${state.ingestionKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        workflowRunId,
+        kind,
+        sourceSystem: "google_drive",
+        externalId,
+        artifact: { kind: parents[kind], sourceSystem: "google_drive", externalId: parentId },
+        ...(options["display-label"]
+          ? { displayLabel: options["display-label"] }
+          : {}),
+        ...(options.url ? { url: options.url } : {}),
+        producedAt,
+      }),
+    },
+  );
+  await readResponseJson(response, "record the Cowork Output");
+  process.stdout.write(`Recorded Google Drive ${kind} ${externalId} for Cowork session ${workflowRunId}.\n`);
+}
+
+function requiredOption(name) {
+  const value = options[name];
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`--${name} is required`);
+  }
+  return value.trim();
+}
+
 function printAdminSettings(state) {
   process.stdout.write(
     [
@@ -233,6 +296,14 @@ function normalizedBaseUrl(value) {
   return url;
 }
 
+function isHttpUrl(value) {
+  try {
+    return ["http:", "https:"].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}
+
 async function writeJson(path, value) {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.${process.pid}.tmp`;
@@ -257,12 +328,14 @@ function delay(milliseconds) {
 function usage() {
   process.stdout.write(
     [
-      "Usage: node sabia.mjs <connect|settings|status|disconnect> [options]",
+      "Usage: node sabia.mjs <connect|settings|status|record-output|disconnect> [options]",
       "",
       "  connect [--tool-details] [--base-url <url>] [--device-name <name>] [--no-open]",
       "  settings        Print the Admin settings > Cowork values again",
       "  status          Show the grant Sabia currently records for this key",
       "  disconnect [--local-only]",
+      "  record-output --workflow-run-id <session.id> --kind <document_create|document_edit|document_comment|spreadsheet_create|spreadsheet_edit|spreadsheet_add_sheet|spreadsheet_comment|presentation_create|presentation_edit|presentation_add_slide> --external-id <drive-file-id>",
+      "                [--display-label <label>] [--url <drive-url>] [--produced-at <ISO-8601>]",
       "",
     ].join("\n"),
   );
