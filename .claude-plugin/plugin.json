@@ -1,19 +1,23 @@
 {
   "name": "sabia-claude-code-otel",
-  "version": "0.2.0",
-  "description": "Connect Claude Code native OpenTelemetry token usage to Sabia.",
+  "version": "0.3.0-beta.1",
+  "description": "Sabia for Claude Code: report completed work through Sabia's hosted MCP tools and connect native OpenTelemetry token usage, each with its own consent.",
   "author": {
     "name": "Sabia Partners",
     "email": "hello@sabiapartners.com"
   },
   "homepage": "https://app2.sabiapartners.ca",
-  "repository": "https://github.com/Sabia-Partners/dashboard",
+  "repository": "https://github.com/Sabia-Partners/dashboard-langfuse",
   "license": "UNLICENSED",
   "keywords": [
     "sabia",
     "claude-code",
     "opentelemetry",
     "usage",
-    "telemetry"
-  ]
+    "telemetry",
+    "artifacts"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "mcpServers": "./.mcp.json"
 }
