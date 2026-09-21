@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 // The Claude Code plugin's reporting path is hosted MCP plus a skill; the
 // manifest is the contract Claude Code loads, so it is pinned here rather than
 // trusted. Native usage stays the separate connect-sabia path.
-const root = join(process.cwd(), "plugins/sabia-claude-code-otel");
+const root = process.cwd();
 const json = async (path: string) => JSON.parse(await readFile(join(root, path), "utf8"));
 
 describe("Sabia for Claude Code plugin manifest", () => {

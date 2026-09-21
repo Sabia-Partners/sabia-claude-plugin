@@ -1,0 +1,23 @@
+name: Release plugin
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.9.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check && pnpm test
+      - run: tar -czf sabia-claude-plugin.tar.gz .claude-plugin .mcp.json skills scripts hooks contracts cowork README.md SECURITY.md CHANGELOG.md
+      - run: gh release create "$GITHUB_REF_NAME" sabia-claude-plugin.tar.gz --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

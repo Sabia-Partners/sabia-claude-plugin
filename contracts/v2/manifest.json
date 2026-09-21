@@ -1,0 +1,12 @@
+{
+  "version": "2.1.0-beta.1",
+  "schema": "report-artifact.schema.json",
+  "sha256": "a74dc7e5e6bed393dc5f56cba556d824b75571c0202da8cdea2d8cdaf040e38a",
+  "backend_migration": "20260916220422",
+  "compatibility": {
+    "unversioned_outputs": "unchanged",
+    "artifact_reports": 2,
+    "usage_references": "null or opaque version 1 reference",
+    "native_otel": "authoritative usage only"
+  }
+}

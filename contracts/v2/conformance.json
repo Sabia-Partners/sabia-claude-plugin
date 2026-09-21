@@ -1,0 +1,436 @@
+{
+  "valid": [
+    {
+      "schema_version": 2,
+      "event_id": "sample-created-doc",
+      "source_application": "chatgpt_work",
+      "collection_method": "skill_tool",
+      "action": "create",
+      "output_type": "document",
+      "title": "Quarterly planning brief",
+      "occurred_at": null,
+      "context": {
+        "session_handle": null,
+        "interaction_handle": null
+      },
+      "artifact": {
+        "type": "document",
+        "source_system": "google_drive",
+        "scope": {
+          "account_id": "authorized-google-connection-id"
+        },
+        "external_id": "file12345678901234567890",
+        "reference": {
+          "kind": "provider_url",
+          "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+          "availability": "provider_managed"
+        }
+      },
+      "evidence": {
+        "basis": "tool_success",
+        "provider_event_id": null,
+        "revision_id": null,
+        "tool_call_reference": null
+      },
+      "usage_reference": null,
+      "usage": {
+        "model": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_tokens": null,
+        "estimated_cost": null
+      }
+    },
+    {
+      "schema_version": 2,
+      "event_id": "sample-updated-doc",
+      "source_application": "chatgpt_work",
+      "collection_method": "skill_tool",
+      "action": "update",
+      "output_type": "document",
+      "title": "Quarterly planning brief",
+      "occurred_at": null,
+      "context": {
+        "session_handle": null,
+        "interaction_handle": null
+      },
+      "artifact": {
+        "type": "document",
+        "source_system": "google_drive",
+        "scope": {
+          "account_id": "authorized-google-connection-id"
+        },
+        "external_id": "file12345678901234567890",
+        "reference": {
+          "kind": "provider_url",
+          "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+          "availability": "provider_managed"
+        }
+      },
+      "evidence": {
+        "basis": "tool_success",
+        "provider_event_id": null,
+        "revision_id": null,
+        "tool_call_reference": null
+      },
+      "usage_reference": null,
+      "usage": {
+        "model": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_tokens": null,
+        "estimated_cost": null
+      }
+    },
+    {
+      "schema_version": 2,
+      "event_id": "sample-unassociated",
+      "source_application": "chatgpt_work",
+      "collection_method": "skill_tool",
+      "action": "create",
+      "output_type": "document",
+      "title": "Quarterly planning brief",
+      "occurred_at": null,
+      "context": {
+        "session_handle": null,
+        "interaction_handle": null
+      },
+      "artifact": null,
+      "evidence": {
+        "basis": "tool_success",
+        "provider_event_id": null,
+        "revision_id": null,
+        "tool_call_reference": null
+      },
+      "usage_reference": null,
+      "usage": {
+        "model": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_tokens": null,
+        "estimated_cost": null
+      }
+    },
+    {
+      "schema_version": 2,
+      "event_id": "native-reference",
+      "source_application": "codex",
+      "collection_method": "skill_tool",
+      "action": "create",
+      "output_type": "document",
+      "title": "Quarterly planning brief",
+      "occurred_at": null,
+      "context": {
+        "session_handle": null,
+        "interaction_handle": null
+      },
+      "artifact": {
+        "type": "document",
+        "source_system": "google_drive",
+        "scope": {
+          "account_id": "authorized-google-connection-id"
+        },
+        "external_id": "file12345678901234567890",
+        "reference": {
+          "kind": "provider_url",
+          "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+          "availability": "provider_managed"
+        }
+      },
+      "evidence": {
+        "basis": "tool_success",
+        "provider_event_id": null,
+        "revision_id": null,
+        "tool_call_reference": null
+      },
+      "usage_reference": {
+        "version": 1,
+        "token": "sbia_usage_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "usage": {
+        "model": null,
+        "input_tokens": null,
+        "output_tokens": null,
+        "reasoning_tokens": null,
+        "estimated_cost": null
+      }
+    }
+  ],
+  "invalid": [
+    {
+      "request": {
+        "schema_version": 2,
+        "event_id": "sample-created-doc",
+        "source_application": "chatgpt_work",
+        "collection_method": "skill_tool",
+        "action": "create",
+        "output_type": "document",
+        "title": "Quarterly planning brief",
+        "occurred_at": null,
+        "context": {
+          "session_handle": null,
+          "interaction_handle": null
+        },
+        "artifact": {
+          "type": "document",
+          "source_system": "google_drive",
+          "scope": {
+            "account_id": "authorized-google-connection-id"
+          },
+          "external_id": "file12345678901234567890",
+          "reference": {
+            "kind": "provider_url",
+            "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+            "availability": "provider_managed"
+          }
+        },
+        "evidence": {
+          "basis": "tool_success",
+          "provider_event_id": null,
+          "revision_id": null,
+          "tool_call_reference": null
+        },
+        "usage_reference": null,
+        "usage": {
+          "model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "reasoning_tokens": null,
+          "estimated_cost": null
+        },
+        "organization_id": "untrusted"
+      },
+      "code": "INVALID_REPORT"
+    },
+    {
+      "request": {
+        "schema_version": 2,
+        "event_id": "sample-created-doc",
+        "source_application": "chatgpt_work",
+        "collection_method": "skill_tool",
+        "action": "create",
+        "output_type": "document",
+        "title": "Quarterly planning brief",
+        "occurred_at": null,
+        "context": {
+          "session_handle": null,
+          "interaction_handle": null
+        },
+        "artifact": {
+          "type": "document",
+          "source_system": "google_drive",
+          "scope": {
+            "account_id": "authorized-google-connection-id"
+          },
+          "external_id": "file12345678901234567890",
+          "reference": {
+            "kind": "provider_url",
+            "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+            "availability": "provider_managed"
+          }
+        },
+        "evidence": {
+          "basis": "tool_success",
+          "provider_event_id": null,
+          "revision_id": null,
+          "tool_call_reference": null
+        },
+        "usage_reference": null,
+        "usage": {
+          "model": null,
+          "input_tokens": 0,
+          "output_tokens": null,
+          "reasoning_tokens": null,
+          "estimated_cost": null
+        }
+      },
+      "code": "UNTRUSTED_USAGE"
+    },
+    {
+      "request": {
+        "schema_version": 3,
+        "event_id": "sample-created-doc",
+        "source_application": "chatgpt_work",
+        "collection_method": "skill_tool",
+        "action": "create",
+        "output_type": "document",
+        "title": "Quarterly planning brief",
+        "occurred_at": null,
+        "context": {
+          "session_handle": null,
+          "interaction_handle": null
+        },
+        "artifact": {
+          "type": "document",
+          "source_system": "google_drive",
+          "scope": {
+            "account_id": "authorized-google-connection-id"
+          },
+          "external_id": "file12345678901234567890",
+          "reference": {
+            "kind": "provider_url",
+            "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+            "availability": "provider_managed"
+          }
+        },
+        "evidence": {
+          "basis": "tool_success",
+          "provider_event_id": null,
+          "revision_id": null,
+          "tool_call_reference": null
+        },
+        "usage_reference": null,
+        "usage": {
+          "model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "reasoning_tokens": null,
+          "estimated_cost": null
+        }
+      },
+      "code": "UNSUPPORTED_VERSION"
+    },
+    {
+      "request": {
+        "schema_version": 2,
+        "event_id": "sample-created-doc",
+        "source_application": "chatgpt_work",
+        "collection_method": "skill_tool",
+        "action": "create",
+        "output_type": "document",
+        "title": "Quarterly planning brief",
+        "occurred_at": null,
+        "context": {
+          "session_handle": null,
+          "interaction_handle": null
+        },
+        "artifact": {
+          "type": "document",
+          "source_system": "google_drive",
+          "scope": {
+            "account_id": "authorized-google-connection-id"
+          },
+          "external_id": "file12345678901234567890",
+          "reference": {
+            "kind": "provider_url",
+            "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+            "availability": "provider_managed"
+          }
+        },
+        "evidence": {
+          "basis": "tool_success",
+          "provider_event_id": null,
+          "revision_id": null,
+          "tool_call_reference": null
+        },
+        "usage_reference": {
+          "version": 2,
+          "token": "sbia_usage_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "usage": {
+          "model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "reasoning_tokens": null,
+          "estimated_cost": null
+        }
+      },
+      "code": "INVALID_REPORT"
+    },
+    {
+      "request": {
+        "schema_version": 2,
+        "event_id": "sample-created-doc",
+        "source_application": "chatgpt_work",
+        "collection_method": "skill_tool",
+        "action": "create",
+        "output_type": "document",
+        "title": "Quarterly planning brief",
+        "occurred_at": null,
+        "context": {
+          "session_handle": null,
+          "interaction_handle": null
+        },
+        "artifact": {
+          "type": "document",
+          "source_system": "google_drive",
+          "scope": {
+            "account_id": "authorized-google-connection-id"
+          },
+          "external_id": "file12345678901234567890",
+          "reference": {
+            "kind": "provider_url",
+            "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+            "availability": "provider_managed"
+          }
+        },
+        "evidence": {
+          "basis": "tool_success",
+          "provider_event_id": null,
+          "revision_id": null,
+          "tool_call_reference": null
+        },
+        "usage_reference": {
+          "version": 1,
+          "token": "session-id"
+        },
+        "usage": {
+          "model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "reasoning_tokens": null,
+          "estimated_cost": null
+        }
+      },
+      "code": "INVALID_REPORT"
+    },
+    {
+      "request": {
+        "schema_version": 2,
+        "event_id": "sample-created-doc",
+        "source_application": "chatgpt_work",
+        "collection_method": "skill_tool",
+        "action": "create",
+        "output_type": "document",
+        "title": "Quarterly planning brief",
+        "occurred_at": null,
+        "context": {
+          "session_handle": null,
+          "interaction_handle": null
+        },
+        "artifact": {
+          "type": "document",
+          "source_system": "google_drive",
+          "scope": {
+            "account_id": "authorized-google-connection-id"
+          },
+          "external_id": "file12345678901234567890",
+          "reference": {
+            "kind": "provider_url",
+            "value": "https://docs.google.com/document/d/file12345678901234567890/edit",
+            "availability": "provider_managed"
+          }
+        },
+        "evidence": {
+          "basis": "tool_success",
+          "provider_event_id": null,
+          "revision_id": null,
+          "tool_call_reference": null
+        },
+        "usage_reference": {
+          "version": 1,
+          "token": "sbia_usage_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "session_id": "forged"
+        },
+        "usage": {
+          "model": null,
+          "input_tokens": null,
+          "output_tokens": null,
+          "reasoning_tokens": null,
+          "estimated_cost": null
+        }
+      },
+      "code": "INVALID_REPORT"
+    }
+  ]
+}

@@ -9,18 +9,18 @@ no per-device exporter to configure, so this helper does two things:
 2. prints the three values the admin pastes into Claude's Cowork settings.
 
 ```text
-node plugins/sabia-cowork-otel/scripts/sabia.mjs connect                 # token activity only
-node plugins/sabia-cowork-otel/scripts/sabia.mjs connect --tool-details  # + reduced tool evidence
-node plugins/sabia-cowork-otel/scripts/sabia.mjs settings                # print the admin values again
-node plugins/sabia-cowork-otel/scripts/sabia.mjs status
-node plugins/sabia-cowork-otel/scripts/sabia.mjs disconnect
+node cowork/scripts/sabia.mjs connect                 # token activity only
+node cowork/scripts/sabia.mjs connect --tool-details  # + reduced tool evidence
+node cowork/scripts/sabia.mjs settings                # print the admin values again
+node cowork/scripts/sabia.mjs status
+node cowork/scripts/sabia.mjs disconnect
 ```
 
 Settings are loaded at Cowork session start, so a new session is needed after
 the admin saves them. `--tool-details` requests Sabia's reduced tool-detail
 grant; what that retains, and what Cowork's own `otlpContentCapture` setting
 has to include for arguments to arrive at all, is in
-[`docs/cowork-otel-connector.md`](../../docs/cowork-otel-connector.md).
+[`docs/cowork-otel-connector.md`](https://github.com/Sabia-Partners/dashboard-langfuse/blob/main/docs/cowork-otel-connector.md).
 
 The state file (`~/.claude/sabia-cowork-otel-state.json`, mode `0600`) holds
 the ingestion key because `settings`, `status`, and `disconnect` need it. Never
@@ -32,7 +32,7 @@ Cowork telemetry does not currently provide sufficient result evidence for
 reliable automatic creation detection. Report a confirmed operation explicitly:
 
 ```text
-node plugins/sabia-cowork-otel/scripts/sabia.mjs record-output --workflow-run-id <session.id> --kind document_create --external-id <drive-file-id>
+node cowork/scripts/sabia.mjs record-output --workflow-run-id <session.id> --kind document_create --external-id <drive-file-id>
 ```
 
 Supported action kinds are `document_create`, `document_edit`,

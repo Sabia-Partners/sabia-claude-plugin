@@ -9,6 +9,19 @@ pilot. The bundled configuration targets `app2.sabiapartners.ca`. Your Sabia
 contact must confirm that your workspace and the matching backend are ready
 before onboarding.
 
+## Install
+
+Add the marketplace and install the plugin from Claude Code:
+
+```text
+/plugin marketplace add Sabia-Partners/sabia-claude-plugin
+/plugin install sabia-claude-code-otel@sabia
+```
+
+An installation that came from the dashboard repository's bundled marketplace
+keeps its identity, device id, connection and grants: the plugin name and the
+managed settings are the same, so upgrading is installing from here.
+
 You can authorize two separate connections. Connecting one does not authorize
 the other.
 
@@ -39,7 +52,7 @@ server, so the plugin presents the pre-registered public client
 must list that client with the exact redirect URI
 `http://localhost:45711/callback` and the `claude_code` application in
 `ARTIFACT_REPORTING_OAUTH_CLIENTS` before anyone can connect — see
-[`docs/claude-code-otel-connector.md`](../../docs/claude-code-otel-connector.md).
+[`docs/claude-code-otel-connector.md`](https://github.com/Sabia-Partners/dashboard-langfuse/blob/main/docs/claude-code-otel-connector.md).
 If port 45711 is taken on a machine, the sign-in fails with a redirect error;
 free the port and retry rather than editing the client entry.
 
@@ -119,4 +132,37 @@ Adding artifact reporting changes none of this: the skill and MCP server do not
 touch `settings.json`, cannot turn on raw capture or tool output, and do not
 alter what the metrics exporter counts.
 
-See [`docs/claude-code-otel-connector.md`](../../docs/claude-code-otel-connector.md) for what Sabia does with the metrics once they arrive.
+See [`docs/claude-code-otel-connector.md`](https://github.com/Sabia-Partners/dashboard-langfuse/blob/main/docs/claude-code-otel-connector.md) for what Sabia does with the metrics once they arrive.
+
+## Cowork helper
+
+[`cowork/`](cowork/README.md) holds the administrative helper for Claude
+Cowork's OTel export. It is a script, not a Claude Code plugin, and is not
+loaded by the marketplace entry above; run it from a checkout as its README
+describes. Cowork cannot load the reporting skill or the bundled MCP server
+today, so completed-work reporting is a Claude Code feature only.
+
+## Administrator and developer reference
+
+Before a Claude Code user can connect completed-work reporting the backend must
+have `ARTIFACT_REPORTING_ENABLED=true` and this entry in
+`ARTIFACT_REPORTING_OAUTH_CLIENTS`:
+
+```json
+{"id":"sabia-claude-code","name":"Sabia for Claude Code",
+ "redirect_uris":["http://localhost:45711/callback"],"applications":["claude_code"]}
+```
+
+Contract: [v2 JSON Schema](contracts/v2/report-artifact.schema.json),
+[version/checksum](contracts/v2/manifest.json) and
+[reporting skill](skills/report-artifact/SKILL.md). Native usage bindings need
+dashboard migration `20260921233000` on the backend.
+
+For local verification: `pnpm install --frozen-lockfile`, `pnpm check`,
+`pnpm test`. The tests cover the connect/sync/disconnect script against a
+local handoff server, the Cowork helper, the plugin manifest and the
+report-binding hook, without importing dashboard source.
+
+Release: tag `vX.Y.Z`; the workflow runs the checks and attaches
+`sabia-claude-plugin.tar.gz`. Rollback is the previous tag; accepted report
+history and native telemetry credentials are unaffected.

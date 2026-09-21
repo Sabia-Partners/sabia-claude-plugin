@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { conversationKey, nativeBinding, runReportBindingHook } from "@/plugins/sabia-claude-code-otel/scripts/sabia-report-binding.mjs";
+import { conversationKey, nativeBinding, runReportBindingHook } from "../scripts/sabia-report-binding.mjs";
 
 // The hook posts the report call's tool_use_id and a device-hashed session_id
 // over the managed telemetry credential. Everything else in the hook input is

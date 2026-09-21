@@ -1,0 +1,351 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "number",
+      "const": 2
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+    },
+    "source_application": {
+      "type": "string",
+      "enum": [
+        "chatgpt",
+        "chatgpt_work",
+        "codex",
+        "claude_code",
+        "claude",
+        "cowork",
+        "cursor",
+        "grok_bot"
+      ]
+    },
+    "collection_method": {
+      "type": "string",
+      "const": "skill_tool"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "create",
+        "update",
+        "send",
+        "publish",
+        "deliver"
+      ]
+    },
+    "output_type": {
+      "type": "string",
+      "enum": [
+        "pull_request",
+        "commit",
+        "issue",
+        "email",
+        "document",
+        "spreadsheet",
+        "presentation",
+        "file",
+        "other"
+      ]
+    },
+    "title": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "occurred_at": {
+      "anyOf": [
+        {
+          "type": "string",
+          "format": "date-time",
+          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "session_handle": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "interaction_handle": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "session_handle",
+        "interaction_handle"
+      ],
+      "additionalProperties": false
+    },
+    "artifact": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "pull_request",
+                "commit",
+                "issue",
+                "email",
+                "document",
+                "spreadsheet",
+                "presentation",
+                "file",
+                "other"
+              ]
+            },
+            "source_system": {
+              "type": "string",
+              "enum": [
+                "google_drive",
+                "github",
+                "slack",
+                "host",
+                "web"
+              ]
+            },
+            "scope": {
+              "type": "object",
+              "properties": {
+                "account_id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 512,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                "workspace_id": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512,
+                      "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "account_id"
+              ],
+              "additionalProperties": false
+            },
+            "external_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+            },
+            "reference": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "provider_url",
+                        "host_file",
+                        "temporary_download"
+                      ]
+                    },
+                    "value": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2048
+                    },
+                    "availability": {
+                      "type": "string",
+                      "enum": [
+                        "provider_managed",
+                        "host_local",
+                        "temporary"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "value",
+                    "availability"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "source_system",
+            "scope",
+            "external_id",
+            "reference"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "properties": {
+        "basis": {
+          "type": "string",
+          "enum": [
+            "tool_success",
+            "host_delivery",
+            "agent_report"
+          ]
+        },
+        "provider_event_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "revision_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "tool_call_reference": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "basis",
+        "provider_event_id",
+        "revision_id",
+        "tool_call_reference"
+      ],
+      "additionalProperties": false
+    },
+    "usage_reference": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "version": {
+              "type": "number",
+              "const": 1
+            },
+            "token": {
+              "type": "string",
+              "pattern": "^sbia_usage_[A-Za-z0-9_-]{43}$"
+            }
+          },
+          "required": [
+            "version",
+            "token"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "model": {
+          "type": "null"
+        },
+        "input_tokens": {
+          "type": "null"
+        },
+        "output_tokens": {
+          "type": "null"
+        },
+        "reasoning_tokens": {
+          "type": "null"
+        },
+        "estimated_cost": {
+          "type": "null"
+        }
+      },
+      "required": [
+        "model",
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "estimated_cost"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "event_id",
+    "source_application",
+    "collection_method",
+    "action",
+    "output_type",
+    "title",
+    "occurred_at",
+    "context",
+    "artifact",
+    "evidence",
+    "usage_reference",
+    "usage"
+  ],
+  "additionalProperties": false
+}

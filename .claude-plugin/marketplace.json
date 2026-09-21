@@ -1,0 +1,17 @@
+{
+  "name": "sabia",
+  "owner": {
+    "name": "Sabia Partners",
+    "email": "hello@sabiapartners.com"
+  },
+  "metadata": {
+    "description": "Sabia for Claude Code: completed-work reporting and native usage"
+  },
+  "plugins": [
+    {
+      "name": "sabia-claude-code-otel",
+      "source": "./",
+      "description": "Report completed work and connect Claude Code token usage to Sabia."
+    }
+  ]
+}

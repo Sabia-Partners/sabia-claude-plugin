@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 const run = promisify(execFile);
 const scriptPath = join(
   process.cwd(),
-  "plugins/sabia-cowork-otel/scripts/sabia.mjs",
+  "cowork/scripts/sabia.mjs",
 );
 const ingestionKey = `sbia_ing_0123456789ab_${"A".repeat(43)}`;
 

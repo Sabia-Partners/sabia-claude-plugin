@@ -8,10 +8,10 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { approvedHandoff } from "@/plugins/sabia-claude-code-otel/scripts/sabia-http.mjs";
+import { approvedHandoff } from "../scripts/sabia-http.mjs";
 
 const run = promisify(execFile);
-const pluginRoot = join(process.cwd(), "plugins/sabia-claude-code-otel");
+const pluginRoot = process.cwd();
 const scriptPath = join(pluginRoot, "scripts/sabia.mjs");
 
 const ingestionKey = `sbia_ing_0123456789ab_${"A".repeat(43)}`;
