@@ -46,9 +46,23 @@ free the port and retry rather than editing the client entry.
 The reporting tools appear under their scoped names, for example
 `mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact`. A report
 records that work was done; it never performs the work, and a reporting failure
-never means the original operation failed. Exact association of a report with
-the native usage session that produced it is separate work (issue #12, step 2)
-and is not claimed by this version.
+never means the original operation failed.
+
+### Exact native usage association
+
+When both connections are active, a bundled `PostToolUse` hook
+(`scripts/sabia-report-binding.mjs`) runs after an accepted `report_artifact`
+receipt and tells Sabia which native tool call and session made the report:
+the call's `tool_use_id` and a SHA-256 of the session id computed on this
+machine, sent over the native usage credential to
+`/api/v1/artifact-reporting/claude-code-invocation`. No prompt, transcript,
+tool input, raw session id or usage value is submitted, and the hook never
+reports on its own — it only binds a receipt the hosted tool already returned.
+A pending binding is kept privately (`$CLAUDE_PLUGIN_DATA/report-bindings`,
+mode 0600) for at most 24 hours and retried at the next session start; the
+credential is never spooled. The record in Sabia then shows `usage_status:
+linked` once that session's token usage has arrived. With only one connection
+active the hook does nothing.
 
 ## Native Claude Code usage
 

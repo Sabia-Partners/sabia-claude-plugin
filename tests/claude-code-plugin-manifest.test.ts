@@ -32,10 +32,19 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(server.oauth).toEqual({ clientId: "sabia-claude-code", callbackPort: 45711 });
   });
 
-  it("does not change the native usage hook", async () => {
+  it("keeps the native usage sync and binds reports only from the scoped report tool", async () => {
     const hooks = await json("hooks/hooks.json");
-    expect(Object.keys(hooks.hooks)).toEqual(["SessionStart"]);
-    expect(hooks.hooks.SessionStart[0].hooks[0].command).toContain("sabia.mjs\" sync --quiet");
+    expect(Object.keys(hooks.hooks).sort()).toEqual(["PostToolUse", "SessionStart"]);
+    const start = hooks.hooks.SessionStart[0].hooks.map((hook: { command: string }) => hook.command);
+    expect(start[0]).toContain("sabia.mjs\" sync --quiet");
+    expect(start[1]).toContain("sabia-report-binding.mjs");
+    const [post] = hooks.hooks.PostToolUse;
+    const matcher = new RegExp(post.matcher);
+    expect(matcher.test("mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact")).toBe(true);
+    expect(matcher.test("mcp__sabia-artifacts__report_artifact")).toBe(true);
+    expect(matcher.test("mcp__plugin_sabia-claude-code-otel_sabia-artifacts__get_artifact_report")).toBe(false);
+    expect(matcher.test("Bash")).toBe(false);
+    expect(post.hooks).toEqual([{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/sabia-report-binding.mjs"', timeout: 8 }]);
   });
 
   it("ships the reporting skill against the scoped tool names", async () => {

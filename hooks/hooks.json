@@ -7,6 +7,23 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/sabia.mjs\" sync --quiet",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/sabia-report-binding.mjs\"",
+            "timeout": 8
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^mcp__(plugin_sabia-claude-code-otel_)?sabia-artifacts__report_artifact$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/sabia-report-binding.mjs\"",
+            "timeout": 8
           }
         ]
       }
