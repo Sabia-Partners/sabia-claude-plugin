@@ -81,6 +81,9 @@ try {
     case "sync":
       await sync();
       break;
+    case "approve":
+      await approve();
+      break;
     default:
       usage();
       process.exitCode = 2;
@@ -291,21 +294,33 @@ async function status() {
       traceCapture: env.OTEL_TRACES_EXPORTER === "otlp",
     })}\n`,
   );
+  const pending = state?.pendingCapture;
+  if (pending?.rawCapture || pending?.traceCapture) {
+    const asked = [pending.rawCapture && "raw capture", pending.traceCapture && "tool output"].filter(Boolean);
+    process.stdout.write(`Waiting for your approval: ${asked.join(" and ")}. Run approve to accept.\n`);
+  }
 }
 
 /**
- * Converges this device on the grants the app has recorded (SAB-102).
+ * Converges this device on the grants the app has recorded (SAB-102), in one
+ * direction only.
  *
  * The grant is decided in Sabia — at approval, or later by an owner or
- * administrator in Settings — and this reads it back and rewrites the managed
- * env block to match. It runs from the plugin's SessionStart hook, so a grant
- * changed in the app lands at the start of the next session without anyone
- * touching this machine. Claude Code reads its environment once per session,
- * which is why the change can never apply to the session already running.
+ * administrator in Settings. Narrowing applies here without asking: exporting
+ * less never needs consent. Widening does not: an administrator turning on
+ * prompt or tool-output export would otherwise start sending this user's
+ * content without the user knowing. So a wider grant is only recorded as
+ * pending and announced at every session start until the person on this
+ * device runs `approve`. The app's toggle keeps working; it takes one yes here.
+ *
+ * Claude Code reads its environment once per session, which is why any change
+ * can never apply to the session already running.
  *
  * Quiet by design under `--quiet`: a hook that prints on every healthy
  * session start is noise, and a hook that fails a session over a sync problem
- * is worse — offline stays silent and the next session retries.
+ * is worse — offline stays silent and the next session retries. A pending
+ * widening is the exception and always prints, because nothing else will tell
+ * the user.
  */
 async function sync() {
   const quiet = Boolean(options.quiet);
@@ -318,9 +333,74 @@ async function sync() {
     return;
   }
 
+  const granted = await readGrants(env, { failOpen: true, quiet });
+  if (!granted) return;
+
+  const current = currentCapture(env);
+  const next = {
+    rawCapture: current.rawCapture && granted.rawCapture,
+    traceCapture: current.traceCapture && granted.traceCapture,
+  };
+  const pending = {
+    rawCapture: granted.rawCapture && !current.rawCapture,
+    traceCapture: granted.traceCapture && !current.traceCapture,
+  };
+  const state = await readJson(statePath);
+  const narrowed =
+    next.rawCapture !== current.rawCapture || next.traceCapture !== current.traceCapture;
+
+  if (narrowed) {
+    await applyCapture(state, granted, next);
+    process.stdout.write(
+      `Sabia updated this device's capture. ${describeCapture(next)} The change applies from the next Claude Code session.\n`,
+    );
+  }
+
+  if (pending.rawCapture || pending.traceCapture) {
+    await recordPending(pending);
+    process.stdout.write(pendingNotice(state, granted));
+    return;
+  }
+
+  if (state?.pendingCapture) await recordPending(null);
+  if (!narrowed && !quiet) process.stdout.write("Sabia telemetry is in sync with the app.\n");
+}
+
+/**
+ * Applies a wider grant waiting in Sabia, on the say-so of the person using
+ * this device. Grants are read fresh rather than from the state file, so a
+ * request withdrawn in the app since the last session cannot be approved.
+ */
+async function approve() {
+  const settings = await readSettings();
+  const env = plainObject(settings.env) ? { ...settings.env } : null;
+  if (!env || !isManaged(env)) {
+    process.stdout.write("Sabia telemetry is not configured in these Claude Code settings.\n");
+    return;
+  }
+
+  const granted = await readGrants(env, { failOpen: false, quiet: false });
+  if (!granted) return;
+  const current = currentCapture(env);
+  const target = { rawCapture: granted.rawCapture, traceCapture: granted.traceCapture };
+  const state = await readJson(statePath);
+  if (target.rawCapture === current.rawCapture && target.traceCapture === current.traceCapture) {
+    if (state?.pendingCapture) await recordPending(null);
+    process.stdout.write(`Nothing is waiting for approval. ${describeCapture(current)}\n`);
+    return;
+  }
+
+  await applyCapture(state, granted, target);
+  process.stdout.write(
+    `Approved. ${describeCapture(target)} The change applies from the next Claude Code session.\n`,
+  );
+}
+
+/** The grants Sabia holds for this key, or null when there is nothing to act on. */
+async function readGrants(env, { failOpen, quiet }) {
   const token = env.OTEL_EXPORTER_OTLP_HEADERS.match(MANAGED_HEADER_PATTERN)?.[1];
   const metricsEndpoint = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT;
-  if (!token || !metricsEndpoint) return;
+  if (!token || !metricsEndpoint) return null;
 
   let response;
   try {
@@ -331,7 +411,8 @@ async function sync() {
     });
   } catch {
     // Offline or slow: leave the current block alone; the next session retries.
-    return;
+    if (!failOpen) throw new Error("could not reach Sabia; nothing was changed");
+    return null;
   }
 
   if (response.status === 401) {
@@ -340,7 +421,7 @@ async function sync() {
     process.stdout.write(
       "Sabia revoked this device's usage sharing. Run disconnect to clean up, or Connect Sabia to reconnect.\n",
     );
-    return;
+    return null;
   }
 
   let granted;
@@ -351,47 +432,71 @@ async function sync() {
     // Same posture as offline: leave the block alone and let the next session
     // retry. This runs from SessionStart, so throwing here would fail the
     // user's session over a response that is usually fine a minute later.
+    if (!failOpen) throw error;
     if (!quiet) {
       process.stdout.write(
         `Could not read Sabia's grants: ${error instanceof Error ? error.message : "unexpected failure"}. This device's capture settings are unchanged.\n`,
       );
     }
-    return;
+    return null;
   }
 
-  const rawCapture = granted.rawCapture === true;
-  const traceCapture = granted.traceCapture === true;
-  const current = {
-    rawCapture: env.OTEL_LOGS_EXPORTER === "otlp",
-    traceCapture: env.OTEL_TRACES_EXPORTER === "otlp",
-  };
-  if (current.rawCapture === rawCapture && current.traceCapture === traceCapture) {
-    if (!quiet) process.stdout.write("Sabia telemetry is in sync with the app.\n");
-    return;
-  }
-
-  const state = await readJson(statePath);
-  await installEnv({
-    deviceId: state?.deviceId || randomUUID(),
+  return {
+    rawCapture: granted.rawCapture === true,
+    traceCapture: granted.traceCapture === true,
     metricsEndpoint,
+    token,
     logsEndpoint:
-      typeof granted.otlpLogsEndpoint === "string"
-        ? granted.otlpLogsEndpoint
-        : metricsEndpoint,
+      typeof granted.otlpLogsEndpoint === "string" ? granted.otlpLogsEndpoint : metricsEndpoint,
     tracesEndpoint:
       typeof granted.tracesEndpoint === "string"
         ? granted.tracesEndpoint
         : new URL("/api/v1/telemetry/traces", metricsEndpoint).toString(),
-    ingestionKey: token,
+  };
+}
+
+function currentCapture(env) {
+  return {
+    rawCapture: env.OTEL_LOGS_EXPORTER === "otlp",
+    traceCapture: env.OTEL_TRACES_EXPORTER === "otlp",
+  };
+}
+
+async function applyCapture(state, granted, capture) {
+  await installEnv({
+    deviceId: state?.deviceId || randomUUID(),
+    metricsEndpoint: granted.metricsEndpoint,
+    logsEndpoint: granted.logsEndpoint,
+    tracesEndpoint: granted.tracesEndpoint,
+    ingestionKey: granted.token,
     ingestionKeyId: state?.ingestionKeyId ?? null,
     organizationId: state?.organizationId ?? null,
     organizationName: state?.organizationName || "unknown",
-    rawCapture,
-    traceCapture,
+    rawCapture: capture.rawCapture,
+    traceCapture: capture.traceCapture,
     existingState: state,
   });
-  process.stdout.write(
-    `Sabia updated this device's capture. ${describeCapture({ rawCapture, traceCapture })} The change applies from the next Claude Code session.\n`,
+}
+
+/** Kept in the state file only so `status` can show it without a request. */
+async function recordPending(pending) {
+  const state = await readJson(statePath);
+  if (!state) return;
+  if (pending) {
+    state.pendingCapture = pending;
+  } else {
+    delete state.pendingCapture;
+  }
+  await atomicWrite(statePath, JSON.stringify(state, null, 2) + "\n");
+}
+
+function pendingNotice(state, granted) {
+  const organization = state?.organizationName || "your Sabia organization";
+  return (
+    `Sabia: an administrator of ${organization} asked to widen what this device shares. ` +
+    `If approved: ${describeCapture(granted)} ` +
+    "Nothing more is exported until the person using this device approves. " +
+    `To approve, run: node "${process.argv[1]}" approve. To decline, do nothing; this notice repeats at each session start while the request stands.\n`
   );
 }
 
@@ -640,13 +745,15 @@ function usage() {
   sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--raw-capture] [--tool-output]
   sabia.mjs status
   sabia.mjs sync [--quiet]
+  sabia.mjs approve
   sabia.mjs disconnect [--local-only]
   sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--raw-capture] [--tool-output]
 
   Token counts are always exported. The two capture grants are independent and
   can be combined; each is approved separately in the browser. Grants changed
   later in Sabia Settings reach this device through sync, which the plugin
-  runs at every session start.
+  runs at every session start. A narrower grant applies on its own; a wider
+  one waits until the person using this device runs approve.
 
   --raw-capture exports prompt text and tool decisions in addition to token
   counts, and asks Sabia to retain the complete OpenTelemetry envelopes.

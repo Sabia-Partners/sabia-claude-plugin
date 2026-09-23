@@ -60,11 +60,12 @@ and is recorded on the connection's key rather than on this machine.
 Everyone in your Sabia organization can read what these grants capture.
 
 > [!IMPORTANT]
-> Capture grants are managed in Sabia. An owner or administrator can change a
-> device's grants later in **Settings → Usage connections**, and the plugin's
-> session-start sync applies the change: it prints a notice in the session where
-> it happens, and the new capture starts from the session after that. To stop
-> sharing, run `disconnect` or remove the device in Sabia.
+> Capture grants are managed in Sabia, and an owner or administrator can change
+> a device's grants later in **Settings → Usage connections**. Narrowing
+> applies at the device's next session start without asking. **Widening never
+> applies without you**: the plugin shows the request at each session start, and
+> nothing more is exported until you approve it on this device (ask Claude, or
+> run `approve`). To stop sharing, run `disconnect` or remove the device in Sabia.
 
 ## How it works
 
@@ -108,7 +109,8 @@ plugin directory:
 ```text
 node scripts/sabia.mjs connect      # browser approval, writes the exporter settings
 node scripts/sabia.mjs status       # organization, endpoint and active grants
-node scripts/sabia.mjs sync         # apply grants changed in Sabia
+node scripts/sabia.mjs sync         # apply narrowed grants, show requested widenings
+node scripts/sabia.mjs approve      # accept a wider grant your administrator requested
 node scripts/sabia.mjs disconnect   # revoke the key and restore previous settings
 ```
 

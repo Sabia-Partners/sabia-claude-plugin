@@ -450,7 +450,32 @@ describe("Sabia Claude Code plugin settings management", () => {
       );
     });
 
-    it("converges the device on a grant widened in the app", async () => {
+    it("holds a grant widened in the app until this device approves it", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      const before = JSON.stringify(await readSettings());
+      grants = { rawCapture: false, traceCapture: true };
+
+      // --quiet does not silence it: nothing else tells the user.
+      const { stdout } = await sabia("sync", "--quiet");
+
+      expect(stdout).toContain("asked to widen what this device shares");
+      expect(stdout).toMatch(/Tool result bodies/);
+      expect(stdout).toContain("approve");
+      expect(JSON.stringify(await readSettings())).toBe(before);
+      expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toEqual({
+        rawCapture: false,
+        traceCapture: true,
+      });
+      expect((await sabia("status")).stdout).toContain("Waiting for your approval: tool output");
+    });
+
+    it("applies a widened grant once this device approves it", async () => {
       await sabia(
         "configure",
         "--endpoint",
@@ -459,10 +484,11 @@ describe("Sabia Claude Code plugin settings management", () => {
         ingestionKey,
       );
       grants = { rawCapture: false, traceCapture: true };
+      await sabia("sync", "--quiet");
 
-      const { stdout } = await sabia("sync");
+      const { stdout } = await sabia("approve");
 
-      expect(stdout).toContain("updated this device's capture");
+      expect(stdout).toContain("Approved.");
       const env = (await readSettings()).env ?? {};
       expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
       expect(env.OTEL_LOG_TOOL_CONTENT).toBe("1");
@@ -470,8 +496,71 @@ describe("Sabia Claude Code plugin settings management", () => {
       expect(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(
         `${serverEndpoint}/api/v1/telemetry/traces`,
       );
-      // The key is untouched: sync converges configuration, never credentials.
+      // The key is untouched: approval changes configuration, never credentials.
       expect(env.OTEL_EXPORTER_OTLP_HEADERS).toContain(ingestionKey);
+      expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toBeUndefined();
+      expect((await sabia("sync", "--quiet")).stdout).toBe("");
+    });
+
+    it("cannot approve a request withdrawn in the app", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      grants = { rawCapture: true, traceCapture: false };
+      await sabia("sync", "--quiet");
+      grants = { rawCapture: false, traceCapture: false };
+      const before = JSON.stringify(await readSettings());
+
+      const { stdout } = await sabia("approve");
+
+      expect(stdout).toContain("Nothing is waiting for approval");
+      expect(JSON.stringify(await readSettings())).toBe(before);
+      expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toBeUndefined();
+    });
+
+    it("narrows one grant while holding another widened grant", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+        "--tool-output",
+      );
+      grants = { rawCapture: true, traceCapture: false };
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      const env = (await readSettings()).env ?? {};
+      expect(env.OTEL_TRACES_EXPORTER).toBe("none");
+      expect(env.OTEL_LOGS_EXPORTER).toBe("none");
+      expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
+      expect(stdout).toContain("updated this device's capture");
+      expect(stdout).toContain("asked to widen");
+    });
+
+    it("changes nothing when approval cannot reach Sabia", async () => {
+      await sabia(
+        "configure",
+        "--endpoint",
+        `${serverEndpoint}/api/v1/telemetry/otlp`,
+        "--ingestion-key",
+        ingestionKey,
+      );
+      grants = "unavailable";
+      const before = JSON.stringify(await readSettings());
+
+      const failure = await sabia("approve").then(
+        () => null,
+        (error: { code: number; stderr: string }) => error,
+      );
+
+      expect(failure?.code).toBe(1);
+      expect(JSON.stringify(await readSettings())).toBe(before);
     });
 
     it("converges the device on a grant narrowed in the app", async () => {
