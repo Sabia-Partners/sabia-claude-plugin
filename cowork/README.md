@@ -18,9 +18,8 @@ node cowork/scripts/sabia.mjs disconnect
 
 Settings are loaded at Cowork session start, so a new session is needed after
 the admin saves them. `--tool-details` requests Sabia's reduced tool-detail
-grant; what that retains, and what Cowork's own `otlpContentCapture` setting
-has to include for arguments to arrive at all, is in
-[`docs/cowork-otel-connector.md`](https://github.com/Sabia-Partners/dashboard-langfuse/blob/main/docs/cowork-otel-connector.md).
+grant. Tool arguments arrive only when Cowork's own `otlpContentCapture`
+setting includes them; your Sabia contact can confirm what the grant retains.
 
 The state file (`~/.claude/sabia-cowork-otel-state.json`, mode `0600`) holds
 the ingestion key because `settings`, `status`, and `disconnect` need it. Never

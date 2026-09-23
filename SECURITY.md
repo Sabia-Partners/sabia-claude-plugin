@@ -1,5 +1,9 @@
 # Security
 
-Report vulnerabilities privately to Sabia Partners through the repository maintainers or GitHub private vulnerability reporting when enabled. Never post credentials, telemetry captures, provider tokens, receipt proofs or client document contents in public issues.
+Report vulnerabilities privately through
+[GitHub private vulnerability reporting](https://github.com/Sabia-Partners/sabia-claude-plugin/security/advisories/new)
+or by email to hello@sabiapartners.com. Please do not open a public issue for a
+vulnerability.
 
-This package is UNLICENSED. No open-source rights are granted by this extraction.
+Never post credentials, ingestion keys, telemetry captures, provider tokens,
+receipt proofs or client document contents in public issues.
