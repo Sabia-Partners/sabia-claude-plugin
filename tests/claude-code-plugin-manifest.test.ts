@@ -12,7 +12,7 @@ describe("Sabia for Claude Code plugin manifest", () => {
   it("keeps the installed identity and declares the bundled reporting server", async () => {
     const plugin = await json(".claude-plugin/plugin.json");
     expect(plugin.name).toBe("sabia-claude-code-otel");
-    expect(plugin.license).toBe("UNLICENSED");
+    expect(plugin.license).toBe("MIT");
     expect(plugin.mcpServers).toBe("./.mcp.json");
     expect(plugin.hooks).toBe("./hooks/hooks.json");
     expect(plugin.skills).toBe("./skills/");
