@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.3.0-beta.1 (unreleased)
+## 0.3.0 (unreleased)
 
+- A capture grant widened in Sabia no longer applies on its own. Sync applies a narrower grant and records a wider one as pending, announcing it at every session start until the person using the device runs `approve`. `status` shows what is waiting.
 - License the plugin under MIT and prepare it for the Claude plugin directory: a new README covering what leaves the machine, a SETUP guide and a private vulnerability reporting route.
 - Extract the Claude Code plugin and the Cowork OTel helper from `Sabia-Partners/dashboard-langfuse` into this repository with their history. The installed identifier stays `sabia-claude-code-otel`; native usage connections, device identity, capture grants, settings paths and app2 routing are unchanged by the move.
 - Report completed work through Sabia's hosted artifact-reporting MCP server (`.mcp.json`, pre-registered public client `sabia-claude-code`, OAuth callback port 45711) with the shared `report-artifact` skill.
