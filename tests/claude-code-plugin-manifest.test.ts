@@ -38,13 +38,20 @@ describe("Sabia for Claude Code plugin manifest", () => {
     const start = hooks.hooks.SessionStart[0].hooks.map((hook: { command: string }) => hook.command);
     expect(start[0]).toContain("sabia.mjs\" sync --quiet");
     expect(start[1]).toContain("sabia-report-binding.mjs");
-    const [post] = hooks.hooks.PostToolUse;
+    const [post, connector] = hooks.hooks.PostToolUse;
     const matcher = new RegExp(post.matcher);
     expect(matcher.test("mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact")).toBe(true);
     expect(matcher.test("mcp__sabia-artifacts__report_artifact")).toBe(true);
     expect(matcher.test("mcp__plugin_sabia-claude-code-otel_sabia-artifacts__get_artifact_report")).toBe(false);
     expect(matcher.test("Bash")).toBe(false);
     expect(post.hooks).toEqual([{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/sabia-report-binding.mjs"', timeout: 8 }]);
+    // Connector mutations: every MCP tool reaches the script, which decides
+    // locally and stays silent for reads and for Sabia's own tools.
+    const connectorMatcher = new RegExp(connector.matcher);
+    expect(connectorMatcher.test("mcp__google_drive__create_file")).toBe(true);
+    expect(connectorMatcher.test("mcp__github__create_pull_request")).toBe(true);
+    expect(connectorMatcher.test("Bash")).toBe(false);
+    expect(connector.hooks).toEqual([{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/sabia-connector-hook.mjs"', timeout: 10 }]);
   });
 
   it("ships the reporting skill against the scoped tool names", async () => {

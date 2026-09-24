@@ -26,6 +26,16 @@
             "timeout": 8
           }
         ]
+      },
+      {
+        "matcher": "^mcp__.+__.+$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/sabia-connector-hook.mjs\"",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

@@ -53,10 +53,14 @@ Two expectations to set: only work done in **new** sessions after connecting
 can appear, and identification depends on where the artifact's identity shows
 up in what Claude Code exports. Command output is exported, so a PR or issue
 created at the command line is identifiable from its stdout. MCP tool *create*
-results are not exported by the client today, so a create whose only identity
-is in the response cannot be identified; MCP *updates* that carry the
-identifier in their arguments (an `issue_number`, a `pull_number`) still can.
-This is a Claude Code client limitation, not a Sabia rule choice.
+results are not exported by the client, so the plugin's `PostToolUse` hook
+(`scripts/sabia-connector-hook.mjs`) sends the identifiers from the reply of a
+successful Drive or GitHub connector mutation — file or pull request ids, names
+and links, nothing else — under this same grant; a Doc created through the
+Drive connector is identifiable that way. MCP *updates* that carry the
+identifier in their arguments (an `issue_number`, a `pull_number`) are
+identifiable from the export alone. Other connectors produce nothing until a
+rule exists for them.
 
 ## Sync
 
