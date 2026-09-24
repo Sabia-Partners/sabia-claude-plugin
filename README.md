@@ -54,7 +54,7 @@ and is recorded on the connection's key rather than on this machine.
 
 | Grant | Adds | Still never sent |
 | --- | --- | --- |
-| **Tool output** (`--tool-output`) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. Sabia keeps a reduced extract per tool and drops file-tool bodies. | Prompt text, assistant responses, raw API bodies. |
+| **Tool output** (`--tool-output`) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. Sabia keeps a reduced extract per tool and drops file-tool bodies. For a successful Google Drive or GitHub connector action that creates or changes something, a local hook also sends the identifiers from its reply: file or pull request ids, names and links. | Prompt text, assistant responses, raw API bodies, connector replies themselves. |
 | **Raw capture** (`--raw-capture`) | Prompt text and tool decisions from Claude Code's log export, retained as complete envelopes. Pre-production, for shaping Sabia's analysis from real data. | Assistant responses, raw API bodies. |
 
 Everyone in your Sabia organization can read what these grants capture.
@@ -96,7 +96,8 @@ flowchart LR
 | [`skills/connect-sabia`](skills/connect-sabia/SKILL.md) | Connects, checks, rotates and disconnects native usage. |
 | [`scripts/sabia.mjs`](scripts/sabia.mjs) | Writes and removes the managed OpenTelemetry block in `settings.json`. Unrelated keys are preserved. |
 | [`scripts/sabia-report-binding.mjs`](scripts/sabia-report-binding.mjs) | Links an accepted report to the tool call and session that made it. |
-| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, and the binding after `report_artifact`. |
+| [`scripts/sabia-connector-hook.mjs`](scripts/sabia-connector-hook.mjs) | Under the tool-output grant only: after a successful Drive or GitHub connector mutation, sends the identifiers in its reply. Claude Code exports connector arguments but never their results, so without it a Doc created through the Drive connector cannot be identified. Reads, other connectors and failed calls send nothing; there is no retry spool. |
+| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after `report_artifact`, and the connector hook after MCP tools. |
 
 A report records that work was done. It never performs the work, and a
 reporting failure never means the original operation failed.

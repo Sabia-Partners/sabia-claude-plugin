@@ -1,0 +1,24 @@
+{
+  "session_id": "00000000-0000-4000-a000-000000000018",
+  "transcript_path": "/home/dev/redacted",
+  "cwd": "/home/dev/workspace",
+  "scratchpad_dir": "/home/dev/redacted",
+  "prompt_id": "00000000-0000-4000-a000-000000000029",
+  "permission_mode": "default",
+  "effort": {
+    "level": "high"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__tickets__create_ticket",
+  "tool_input": {
+    "title": "SAB137 synthetic ticket"
+  },
+  "tool_response": [
+    {
+      "type": "text",
+      "text": "{\"id\":\"TICKET-7\",\"html_url\":\"https://tracker.invalid/TICKET-7\",\"status\":\"open\"}"
+    }
+  ],
+  "tool_use_id": "toolu_SAB137000000000000000008",
+  "duration_ms": 4
+}

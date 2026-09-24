@@ -1,0 +1,263 @@
+{
+  "description": "The connector hook's copy of the dashboard's Drive/GitHub mutation allowlist and identity projection. Generated from dashboard-langfuse src/modules/observations/domain/mutation-identity-projection.ts and src/modules/quality/domain; the dashboard pins the same file in tests/fixtures/claude-code-connector-contract-v1.json.",
+  "version": 1,
+  "mutations": [
+    "add_comment",
+    "add_comment_to_issue",
+    "add_issue_comment",
+    "add_review_to_pr",
+    "add_sheet",
+    "add_slide",
+    "append_text",
+    "append_values",
+    "batch_update",
+    "batch_update_document",
+    "batch_update_presentation",
+    "batch_update_spreadsheet",
+    "bulk_update_file_comments",
+    "clear_values",
+    "copy_file",
+    "create_comment",
+    "create_file",
+    "create_issue",
+    "create_presentation_from_template",
+    "create_pull_request",
+    "create_pull_request_review",
+    "create_sheet",
+    "create_slide",
+    "delete_text",
+    "duplicate_sheet_in_new_spreadsheet",
+    "enable_auto_merge",
+    "import_document",
+    "import_presentation",
+    "import_spreadsheet",
+    "insert_text",
+    "merge_pull_request",
+    "replace_text",
+    "submit_pull_request_review",
+    "update_document",
+    "update_file",
+    "update_issue",
+    "update_presentation",
+    "update_pull_request",
+    "update_spreadsheet",
+    "update_values",
+    "upload_file",
+    "write_file"
+  ],
+  "primaryIdentityKeys": [
+    "commentId",
+    "comment_id",
+    "documentId",
+    "document_id",
+    "document_url",
+    "externalId",
+    "external_id",
+    "fileId",
+    "file_id",
+    "fullIdentifier",
+    "full_identifier",
+    "html_url",
+    "id",
+    "identifier",
+    "issueId",
+    "issueNumber",
+    "issue_id",
+    "issue_number",
+    "mimeType",
+    "mime_type",
+    "name",
+    "number",
+    "org",
+    "owner",
+    "pr_number",
+    "presentationId",
+    "presentation_id",
+    "presentation_url",
+    "pullNumber",
+    "pull_number",
+    "repo",
+    "repo_full_name",
+    "repository",
+    "repository_full_name",
+    "reviewId",
+    "review_id",
+    "sha",
+    "spreadsheetId",
+    "spreadsheet_id",
+    "spreadsheet_url",
+    "title",
+    "url",
+    "webViewLink"
+  ],
+  "projections": [
+    {
+      "input": {
+        "inputProjection": {
+          "input": {
+            "name": "GTM one-pager",
+            "mimeType": "application/vnd.google-apps.document",
+            "content": "Dear investor, here is why Sabia…"
+          }
+        },
+        "resultProjection": {
+          "output": [
+            {
+              "type": "text",
+              "text": "{\"id\":\"1NHuMai1WZ-tXpaAoZ_6tpLc00E8RkLEfrUHXlTfpYWo\",\"name\":\"GTM one-pager\",\"mimeType\":\"application/vnd.google-apps.document\",\"webViewLink\":\"https://docs.google.com/document/d/1NHuMai1WZ-tXpaAoZ_6tpLc00E8RkLEfrUHXlTfpYWo/edit\",\"content\":\"Dear investor, here is why Sabia…\"}"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": {
+            "input": {
+              "name": "GTM one-pager",
+              "mimeType": "application/vnd.google-apps.document"
+            }
+          },
+          "result": {
+            "output": [
+              {
+                "type": "text",
+                "text": {
+                  "id": "1NHuMai1WZ-tXpaAoZ_6tpLc00E8RkLEfrUHXlTfpYWo",
+                  "name": "GTM one-pager",
+                  "mimeType": "application/vnd.google-apps.document",
+                  "webViewLink": "https://docs.google.com/document/d/1NHuMai1WZ-tXpaAoZ_6tpLc00E8RkLEfrUHXlTfpYWo/edit"
+                }
+              }
+            ]
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": {
+          "input": {
+            "owner": "Sabia-Partners",
+            "repo": "dashboard-langfuse",
+            "title": "t",
+            "body": "long body"
+          }
+        },
+        "resultProjection": {
+          "output": "{\"number\":99,\"html_url\":\"https://github.com/Sabia-Partners/dashboard-langfuse/pull/99\"}"
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": {
+            "input": {
+              "owner": "Sabia-Partners",
+              "repo": "dashboard-langfuse",
+              "title": "t"
+            }
+          },
+          "result": {
+            "output": {
+              "number": 99,
+              "html_url": "https://github.com/Sabia-Partners/dashboard-langfuse/pull/99"
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": {
+          "input": {
+            "spreadsheet_id": "1qxGrvYAtMNIURpJgZStAxmP1y81zIQL5VNf0HAm8hn8",
+            "requests": [
+              {
+                "duplicateSheet": {
+                  "newSheetName": "October"
+                }
+              }
+            ]
+          }
+        },
+        "resultProjection": {
+          "output": "Wall time: 1 second\nOutput:\n{\"spreadsheetId\":\"1qxGrvYAtMNIURpJgZStAxmP1y81zIQL5VNf0HAm8hn8\"}"
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": {
+            "input": {
+              "spreadsheet_id": "1qxGrvYAtMNIURpJgZStAxmP1y81zIQL5VNf0HAm8hn8",
+              "requests": [
+                {
+                  "duplicateSheet": {}
+                }
+              ]
+            }
+          },
+          "result": {
+            "output": {
+              "spreadsheetId": "1qxGrvYAtMNIURpJgZStAxmP1y81zIQL5VNf0HAm8hn8"
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": {
+          "input": "not json {"
+        },
+        "resultProjection": {
+          "output": [
+            {
+              "type": "text",
+              "text": "plain prose reply"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "projection": null,
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "data": {
+              "file": {
+                "id": "1NHuMai1WZ-tXpaAoZ_6tpLc00E8RkLEfrUHXlTfpYWo",
+                "content": "body"
+              }
+            }
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": {
+              "data": {
+                "file": {
+                  "id": "1NHuMai1WZ-tXpaAoZ_6tpLc00E8RkLEfrUHXlTfpYWo"
+                }
+              }
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    }
+  ]
+}

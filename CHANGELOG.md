@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+- Report connector mutations: a `PostToolUse` hook (`scripts/sabia-connector-hook.mjs`) sends the identifiers from the reply of a successful Google Drive or GitHub connector create or update — file or pull request ids, names and links — under the tool-output grant only, to `/api/v1/telemetry/claude-code/hooks`. Claude Code exports connector arguments but never their results, so a Doc created through the Drive connector was unidentifiable. Reads, other connectors, error-shaped replies (including errors wrapped in content blocks) and Sabia's own tools send nothing. No spool; a few bounded retries, then silence. Moved from dashboard-langfuse#95.
+- `contracts/connector-hook/v1.json` pins the hook's operation allowlist and identity projection against the dashboard's.
+
 ## 0.3.0 (unreleased)
 
 - A capture grant widened in Sabia no longer applies on its own. Sync applies a narrower grant and records a wider one as pending, announcing it at every session start until the person using the device runs `approve`. `status` shows what is waiting.
