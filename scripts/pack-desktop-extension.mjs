@@ -27,6 +27,7 @@ await rm(out, { recursive: true, force: true });
 await rm(bundle, { force: true });
 await mkdir(join(out, "server", "lib"), { recursive: true });
 await cp(join(root, "desktop-extension", "manifest.json"), join(out, "manifest.json"));
+await cp(join(root, "desktop-extension", "icon.png"), join(out, "icon.png"));
 await cp(join(root, "desktop-extension", "server", "index.mjs"), join(out, "server", "index.mjs"));
 await cp(join(root, "cowork", "scripts", "cowork-local.mjs"), join(out, "server", "lib", "cowork-local.mjs"));
 await cp(join(root, "cowork", "scripts", "sabia-http.mjs"), join(out, "server", "lib", "sabia-http.mjs"));
