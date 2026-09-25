@@ -92,7 +92,7 @@ afterEach(async () => {
 });
 
 function start() {
-  child = spawn(process.execPath, [serverPath], {
+  const proc = spawn(process.execPath, [serverPath], {
     env: {
       ...process.env,
       SABIA_APP_URL: baseUrl,
@@ -103,7 +103,8 @@ function start() {
     },
   });
   const responses = new Map<number, (value: { result?: { content?: Array<{ text: string }>; tools?: Array<{ name: string }> } }) => void>();
-  createInterface({ input: child.stdout }).on("line", (line) => {
+  child = proc;
+  createInterface({ input: proc.stdout }).on("line", (line) => {
     const message = JSON.parse(line);
     responses.get(message.id)?.(message);
   });
@@ -112,7 +113,7 @@ function start() {
     new Promise<{ result?: { content?: Array<{ text: string }>; tools?: Array<{ name: string }> } }>((resolve) => {
       const id = nextId++;
       responses.set(id, resolve);
-      child!.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      proc.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
     });
   const tool = async (name: string) => (await request("tools/call", { name, arguments: {} })).result!.content![0]!.text;
   return { request, tool };
@@ -153,6 +154,23 @@ describe("Sabia Desktop Extension", () => {
 
     await until(async () => (await tool("sabia_status")).includes("sent 1 events"));
     expect(await tool("sabia_sync_now")).toContain("sent 0 events");
+  });
+
+  it("starts one approval when Claude Desktop launches the server twice at once", async () => {
+    const first = start();
+    const firstChild = child!;
+    const second = start();
+    const secondChild = child!;
+
+    expect(await first.tool("sabia_status")).toContain("Waiting for approval");
+    expect(await second.tool("sabia_status")).toContain("Waiting for approval");
+    expect(connectRequests).toHaveLength(1);
+
+    approved = true;
+    await until(() => posts.length >= 1);
+    firstChild.kill();
+    secondChild.kill();
+    child = null;
   });
 
   it("resumes a waiting approval after a restart instead of starting another", async () => {

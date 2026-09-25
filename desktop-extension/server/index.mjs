@@ -13,9 +13,9 @@
 
 import { spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 
 import {
@@ -70,13 +70,67 @@ function beginConnect({ open }) {
   return starting;
 }
 
-async function startConnect({ open }) {
+const lockPath = `${pendingPath}.lock`;
+const LOCK_STALE_MS = 60 * 1_000;
+
+async function waitingApproval() {
   const pending = await readJson(pendingPath);
-  if (pending && Date.parse(pending.expiresAt) > Date.now()) {
+  return pending && Date.parse(pending.expiresAt) > Date.now() ? pending : null;
+}
+
+/**
+ * Claude Desktop can start this server twice at once (install, then enable).
+ * Only the process that creates the lock file starts an approval; the other
+ * waits for it and reuses it, so one device never ends up with two keys.
+ */
+async function acquireConnectLock() {
+  // A fresh machine may not have the Claude config folder yet.
+  await mkdir(dirname(lockPath), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      await writeFile(lockPath, String(process.pid), { flag: "wx", mode: 0o600 });
+      return true;
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      const info = await stat(lockPath).catch(() => null);
+      if (info && Date.now() - info.mtimeMs < LOCK_STALE_MS) return false;
+      await rm(lockPath, { force: true }); // left by a process that died
+    }
+  }
+  return false;
+}
+
+async function startConnect({ open }) {
+  const pending = await waitingApproval();
+  if (pending) {
     pollUntilApproved(pending);
     return pending.verificationUri;
   }
 
+  if (!(await acquireConnectLock())) {
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      if (await connectedState()) {
+        startSyncLoop();
+        return null;
+      }
+      const theirs = await waitingApproval();
+      if (theirs) {
+        pollUntilApproved(theirs);
+        return theirs.verificationUri;
+      }
+      await delay(100);
+    }
+    throw new Error("another Sabia process is starting the connection; try again in a moment");
+  }
+  try {
+    return await createApproval({ open, pending });
+  } finally {
+    await rm(lockPath, { force: true });
+  }
+}
+
+async function createApproval({ open, pending }) {
   const existing = await readJson(statePath);
   const deviceId = existing?.deviceId || pending?.deviceId || randomUUID();
   const verifier = randomBytes(32).toString("base64url");
@@ -211,6 +265,7 @@ async function callTool(name) {
     const state = await connectedState();
     if (state) return `Already connected to ${state.organizationName}. ${await statusText()}`;
     const link = await beginConnect({ open: true });
+    if (!link) return `Connected. ${await statusText()}`;
     return `Open this link to approve sharing Cowork usage with Sabia: ${link}`;
   }
   if (name === "sabia_sync_now") {
