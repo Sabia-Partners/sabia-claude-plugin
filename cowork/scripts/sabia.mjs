@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { hostname, homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
+import {
+  buildCoworkLogsPayload,
+  claudeAppDataDirectory,
+  findSessionAudits,
+  readSessionEvents,
+} from "./cowork-local.mjs";
 import {
   approvedHandoff,
   connectHandoff,
@@ -25,11 +32,31 @@ const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";
 const { command, options } = parseArguments(process.argv.slice(2));
 const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
 const statePath = options.state || join(claudeHome, "sabia-cowork-otel-state.json");
+// The local collector is a separate connection from the admin export: its key
+// belongs to the person on this device, so their usage is attributed to them.
+const localStatePath =
+  options["local-state"] || join(claudeHome, "sabia-cowork-local-state.json");
+const cursorPath = options.cursor || join(claudeHome, "sabia-cowork-local-cursor.json");
+const LAUNCH_AGENT_LABEL = "ca.sabiapartners.cowork-sync";
+const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
+const SYNC_INTERVAL_SECONDS = 600;
+const MAX_RECORDS_PER_REQUEST = 500;
+const MAX_BYTES_PER_REQUEST = 900_000;
 
 try {
   switch (command) {
     case "connect":
-      await connect();
+      if (options.local) await connectLocal();
+      else await connect();
+      break;
+    case "sync":
+      await sync();
+      break;
+    case "schedule":
+      await schedule();
+      break;
+    case "unschedule":
+      await unschedule();
       break;
     case "settings":
       await settings();
@@ -104,6 +131,232 @@ async function connect() {
   printAdminSettings(state);
 }
 
+/**
+ * Connects this device's own Cowork sessions, read from the desktop app's
+ * local session logs. For Claude plans without Cowork's admin OTel export
+ * (Pro, Max). The key is this person's, so usage is attributed to them.
+ */
+async function connectLocal() {
+  const baseUrl = normalizedBaseUrl(
+    options["base-url"] || process.env.SABIA_APP_URL || DEFAULT_BASE_URL,
+  );
+  const existingState = await readJson(localStatePath);
+  const deviceId = existingState?.deviceId || randomUUID();
+  const verifier = randomBytes(32).toString("base64url");
+  const codeChallenge = createHash("sha256").update(verifier).digest("hex");
+  const content = Boolean(options.content);
+
+  const response = await fetch(new URL("/api/v1/telemetry/connect", baseUrl), {
+    method: "POST",
+    redirect: "manual",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "cowork",
+      deviceId,
+      deviceName: options["device-name"] || `${hostname() || "This device"} (Cowork)`,
+      codeChallenge,
+      // Content capture is asked for, not assumed: an owner or administrator
+      // approves the grant, and sync sends content only once it is granted.
+      rawCapture: content,
+    }),
+  });
+  const handoff = connectHandoff(
+    await readResponseJson(response, "start browser connection"),
+  );
+  process.stdout.write(
+    `Open this URL to share this device's Cowork ${content ? "usage and content" : "usage"} with Sabia:\n${handoff.verificationUri}\n`,
+  );
+  if (!options["no-open"]) openBrowser(handoff.verificationUri);
+
+  const approved = await pollForApproval(baseUrl, handoff, verifier);
+  await writeJson(localStatePath, {
+    deviceId,
+    baseUrl: baseUrl.toString(),
+    ingestionKeyId: approved.ingestionKeyId,
+    ingestionKey: approved.ingestionKey,
+    organizationId: approved.organizationId,
+    organizationName: approved.organizationName,
+    otlpLogsEndpoint: approved.otlpLogsEndpoint,
+    content,
+    connectedAt: new Date().toISOString(),
+  });
+  process.stdout.write(
+    [
+      `Connected this device's Cowork sessions to ${approved.organizationName}.`,
+      content
+        ? "Content capture was requested. Prompts, responses and tool details are sent only after an owner or administrator approves it; until then, usage only."
+        : "Usage only: model, token counts, times and session ids. No prompts, responses or file contents.",
+      "",
+    ].join("\n"),
+  );
+
+  if (!options["no-schedule"]) await schedule();
+  if (!options["no-sync"]) await sync();
+}
+
+/**
+ * Sends Cowork usage (and granted content) recorded since the last run. Safe
+ * to run repeatedly: each file resumes from its saved offset, and a resent
+ * call keeps its idempotency key.
+ */
+async function sync() {
+  const state = await readJson(localStatePath);
+  if (!state?.ingestionKey) {
+    throw new Error("this device's Cowork sessions are not connected; run connect --local first");
+  }
+  const baseUrl = state.baseUrl || DEFAULT_BASE_URL;
+  const content = state.content ? await contentGranted(state, baseUrl) : false;
+  if (content === null) return; // revoked; already reported
+
+  const cursors = (await readJson(cursorPath)) ?? {};
+  const audits = await findSessionAudits(options["app-data"] || claudeAppDataDirectory());
+  let sent = 0;
+  let sessions = 0;
+
+  for (const audit of audits) {
+    const previous = cursors[audit.auditPath];
+    if (previous && previous.offset === audit.size) continue;
+
+    const { events, cursor } = await readSessionEvents(audit.auditPath, previous, { content });
+    for (const batch of batches(events)) {
+      const outcome = await post(state, baseUrl, buildCoworkLogsPayload(batch, audit));
+      if (outcome === "revoked") {
+        process.stderr.write("Sabia: this device's Cowork connection was revoked. Run connect --local again.\n");
+        process.exitCode = 1;
+        return;
+      }
+      if (outcome === "retry") {
+        // This file's cursor is not advanced: it is resent from the old one.
+        process.stderr.write(`Sabia: could not reach Sabia; ${sent} events sent, the rest retry next run.\n`);
+        process.exitCode = 1;
+        return;
+      }
+      sent += batch.length;
+    }
+    if (events.length > 0) sessions += 1;
+    cursors[audit.auditPath] = cursor;
+    await writeJson(cursorPath, cursors);
+  }
+  process.stdout.write(
+    `Sent ${sent} Cowork events from ${sessions} sessions${content ? " (with content)" : ""}.\n`,
+  );
+}
+
+/** True only when content was asked for and Sabia records the grant; null when revoked. */
+async function contentGranted(state, baseUrl) {
+  const response = await fetch(new URL("/api/v1/telemetry/connection", baseUrl), {
+    headers: { authorization: `Bearer ${state.ingestionKey}` },
+    redirect: "manual",
+  });
+  if (response.status === 401) {
+    process.stderr.write("Sabia: this device's Cowork connection was revoked. Run connect --local again.\n");
+    process.exitCode = 1;
+    return null;
+  }
+  if (!response.ok) return false;
+  const sheet = await response.json().catch(() => null);
+  return Boolean(sheet?.rawCapture);
+}
+
+function* batches(events) {
+  let batch = [];
+  let bytes = 0;
+  for (const event of events) {
+    const size = Buffer.byteLength(JSON.stringify(event), "utf8") + 512;
+    if (
+      batch.length > 0 &&
+      (batch.length >= MAX_RECORDS_PER_REQUEST || bytes + size > MAX_BYTES_PER_REQUEST)
+    ) {
+      yield batch;
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(event);
+    bytes += size;
+  }
+  if (batch.length > 0) yield batch;
+}
+
+async function post(state, baseUrl, payload) {
+  let response;
+  try {
+    response = await fetch(
+      state.otlpLogsEndpoint || new URL("/api/v1/telemetry/otlp/v1/logs", baseUrl),
+      {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          authorization: `Bearer ${state.ingestionKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+  } catch {
+    return "retry";
+  }
+  if (response.status === 401) return "revoked";
+  if (response.ok) return "sent";
+  // A payload Sabia refuses as invalid would be refused again; move past it
+  // rather than resend it forever. Anything else is transient.
+  if ([400, 413, 415].includes(response.status)) return "sent";
+  return "retry";
+}
+
+/** Runs sync in the background every ten minutes (macOS LaunchAgent). */
+async function schedule() {
+  const script = fileURLToPath(import.meta.url);
+  if (process.platform !== "darwin") {
+    process.stdout.write(
+      `Automatic sync is set up on macOS only. Schedule this every 10 minutes:\n  ${process.execPath} ${script} sync\n`,
+    );
+    return;
+  }
+  const logPath = join(claudeHome, "sabia-cowork-sync.log");
+  const plist = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${LAUNCH_AGENT_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${xml(process.execPath)}</string>
+    <string>${xml(script)}</string>
+    <string>sync</string>
+  </array>
+  <key>StartInterval</key><integer>${SYNC_INTERVAL_SECONDS}</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>${xml(logPath)}</string>
+  <key>StandardErrorPath</key><string>${xml(logPath)}</string>
+</dict>
+</plist>
+`;
+  await mkdir(dirname(launchAgentPath), { recursive: true });
+  await writeFile(launchAgentPath, plist, { mode: 0o644 });
+  const domain = `gui/${process.getuid()}`;
+  await launchctl(["bootout", domain, launchAgentPath]).catch(() => undefined);
+  await launchctl(["bootstrap", domain, launchAgentPath]);
+  process.stdout.write(
+    `Cowork usage now syncs every ${SYNC_INTERVAL_SECONDS / 60} minutes (log: ${logPath}).\n`,
+  );
+}
+
+async function unschedule() {
+  if (process.platform !== "darwin") return;
+  await launchctl(["bootout", `gui/${process.getuid()}`, launchAgentPath]).catch(() => undefined);
+  await rm(launchAgentPath, { force: true });
+}
+
+function launchctl(args) {
+  return new Promise((resolve, reject) => {
+    execFile("launchctl", args, (error) => (error ? reject(error) : resolve()));
+  });
+}
+
+function xml(value) {
+  return String(value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 async function settings() {
   const state = await readJson(statePath);
   if (!state?.ingestionKey) {
@@ -141,6 +394,7 @@ async function status() {
 }
 
 async function disconnect() {
+  if (options.local) return disconnectLocal();
   const state = await readJson(statePath);
   if (!state?.ingestionKey) {
     process.stdout.write("Cowork is not connected to Sabia on this device.\n");
@@ -164,6 +418,35 @@ async function disconnect() {
   await rm(statePath, { force: true });
   process.stdout.write(
     "Disconnected. Remove the Sabia endpoint from Admin settings > Cowork so sessions stop exporting to a revoked key.\n",
+  );
+}
+
+async function disconnectLocal() {
+  const state = await readJson(localStatePath);
+  await unschedule();
+  if (!state?.ingestionKey) {
+    process.stdout.write("This device's Cowork sessions are not connected to Sabia.\n");
+    return;
+  }
+  if (!options["local-only"]) {
+    const response = await fetch(
+      new URL("/api/v1/telemetry/connection", state.baseUrl || DEFAULT_BASE_URL),
+      {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${state.ingestionKey}` },
+        redirect: "manual",
+      },
+    );
+    if (response.status !== 204 && response.status !== 401) {
+      throw new Error(
+        `could not revoke this device (HTTP ${response.status}); retry, or revoke it from Sabia Usage Connections`,
+      );
+    }
+  }
+  await rm(localStatePath, { force: true });
+  await rm(cursorPath, { force: true });
+  process.stdout.write(
+    "Disconnected this device's Cowork sessions and stopped the background sync.\n",
   );
 }
 
@@ -275,7 +558,9 @@ function parseArguments(args) {
     const argument = args[index];
     if (!argument.startsWith("--")) throw new Error(`unexpected argument: ${argument}`);
     const key = argument.slice(2);
-    if (["no-open", "local-only", "tool-details"].includes(key)) {
+    if (
+      ["no-open", "local-only", "tool-details", "local", "content", "no-schedule", "no-sync"].includes(key)
+    ) {
       options[key] = true;
     } else {
       const value = args[index + 1];
@@ -331,6 +616,13 @@ function usage() {
       "Usage: node sabia.mjs <connect|settings|status|record-output|disconnect> [options]",
       "",
       "  connect [--tool-details] [--base-url <url>] [--device-name <name>] [--no-open]",
+      "  connect --local [--content] [--no-schedule] [--no-sync]",
+      "                  Share this device's Cowork sessions from the desktop app's local",
+      "                  logs (Pro/Max plans). --content asks to include prompts, responses",
+      "                  and tool details once an owner or administrator approves.",
+      "  sync            Send Cowork usage recorded since the last sync",
+      "  schedule | unschedule   Background sync every 10 minutes (macOS)",
+      "  disconnect --local      Revoke this device and stop the background sync",
       "  settings        Print the Admin settings > Cowork values again",
       "  status          Show the grant Sabia currently records for this key",
       "  disconnect [--local-only]",

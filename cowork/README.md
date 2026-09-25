@@ -25,6 +25,45 @@ The state file (`~/.claude/sabia-cowork-otel-state.json`, mode `0600`) holds
 the ingestion key because `settings`, `status`, and `disconnect` need it. Never
 paste it anywhere but the Cowork admin headers field.
 
+## Pro and Max plans: share this device's Cowork sessions
+
+Cowork's OpenTelemetry export exists only on Claude Team and Enterprise plans.
+On any plan, the Claude desktop app keeps a local log of every Cowork session,
+and this helper can share it from the device:
+
+```text
+node cowork/scripts/sabia.mjs connect --local            # usage only
+node cowork/scripts/sabia.mjs connect --local --content  # + prompts, responses, tool details
+node cowork/scripts/sabia.mjs sync                       # send what is new (also runs every 10 min)
+node cowork/scripts/sabia.mjs disconnect --local
+```
+
+`connect --local` runs the browser handoff for a key that belongs to the
+person on this device, so their Cowork usage is attributed to them. It then
+sends past sessions and, on macOS, installs a LaunchAgent
+(`ca.sabiapartners.cowork-sync`) that runs `sync` every ten minutes. Use
+`--no-schedule` to skip it; on other platforms, schedule `sync` yourself.
+
+What is sent:
+
+- **Always:** per turn and per model, the token totals Cowork itself records
+  (input, output, cache reads, cache writes), the number of model calls, the
+  time, and the Cowork session id. Tool names and success are sent without
+  their arguments.
+- **With `--content`, once an owner or administrator approves the grant in
+  Sabia:** prompts, responses, and tool inputs and results (bounded to Cowork's
+  own exporter limits). Until the grant is approved, `sync` sends usage only.
+
+Each session log is read from where the last sync stopped
+(`~/.claude/sabia-cowork-local-cursor.json`), so a sync can run any number of
+times without double counting.
+
+Caveats: the log is the desktop app's internal format, not a documented
+contract, so an app update can change it; anything unrecognised is skipped
+rather than guessed at. A turn is sent when it finishes. If an organization
+also uses the Team/Enterprise admin export for the same account, use one or
+the other, or the usage is counted twice.
+
 ## Explicit Workspace Outputs
 
 Cowork telemetry does not currently provide sufficient result evidence for
