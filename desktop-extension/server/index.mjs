@@ -45,6 +45,9 @@ let lastSync = null;
 let syncing = null;
 let polling = null;
 let timer = null;
+// The approval being started, so status asked mid-start reports it rather
+// than "not connected".
+let starting = null;
 
 const log = (message) => process.stderr.write(`[sabia] ${message}\n`);
 
@@ -60,7 +63,14 @@ async function connectedState() {
  * approval survives restarts so Claude Desktop re-launching the server does
  * not open a new tab each time.
  */
-async function beginConnect({ open }) {
+function beginConnect({ open }) {
+  starting ??= startConnect({ open }).finally(() => {
+    starting = null;
+  });
+  return starting;
+}
+
+async function startConnect({ open }) {
   const pending = await readJson(pendingPath);
   if (pending && Date.parse(pending.expiresAt) > Date.now()) {
     pollUntilApproved(pending);
@@ -212,6 +222,7 @@ async function callTool(name) {
 }
 
 async function statusText() {
+  if (starting) await starting.catch(() => undefined);
   const state = await connectedState();
   if (!state) {
     const pending = await readJson(pendingPath);
