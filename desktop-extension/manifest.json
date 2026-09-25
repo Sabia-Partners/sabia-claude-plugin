@@ -1,0 +1,68 @@
+{
+  "manifest_version": "0.3",
+  "name": "sabia",
+  "display_name": "Sabia",
+  "version": "0.4.0",
+  "description": "Share your Claude Cowork usage with your Sabia organization, on any Claude plan.",
+  "long_description": "Sabia measures what AI costs and what it produces. This extension reads the usage Claude Desktop records for your Cowork sessions on this device — per turn and model: tokens, number of calls, time and session id — and sends it to your Sabia organization, where it is attributed to you. It never sends prompts, responses or file contents unless you turn on content sharing below and an owner or administrator approves it in Sabia. After installing, approve the connection in the browser page that opens; usage then syncs every ten minutes while Claude is open.",
+  "author": {
+    "name": "Sabia Partners",
+    "email": "hello@sabiapartners.com",
+    "url": "https://sabiapartners.ca"
+  },
+  "homepage": "https://app2.sabiapartners.ca",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sabia-Partners/sabia-claude-plugin"
+  },
+  "license": "MIT",
+  "keywords": ["sabia", "cowork", "usage", "ai spend"],
+  "privacy_policies": ["https://app2.sabiapartners.ca/privacy"],
+  "server": {
+    "type": "node",
+    "entry_point": "server/index.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server/index.mjs"],
+      "env": {
+        "SABIA_APP_URL": "${user_config.sabia_url}",
+        "SABIA_SHARE_CONTENT": "${user_config.share_content}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "sabia_status",
+      "description": "Show whether this device's Cowork usage is connected to Sabia, and the last sync."
+    },
+    {
+      "name": "sabia_connect",
+      "description": "Connect this device's Cowork usage to a Sabia organization."
+    },
+    {
+      "name": "sabia_sync_now",
+      "description": "Send Cowork usage recorded since the last sync to Sabia now."
+    }
+  ],
+  "user_config": {
+    "share_content": {
+      "type": "boolean",
+      "title": "Also share prompts, responses and tool details",
+      "description": "Off by default. When on, Sabia asks your organization's owner or administrator to approve content capture; nothing beyond usage is sent until they do.",
+      "default": false,
+      "required": false
+    },
+    "sabia_url": {
+      "type": "string",
+      "title": "Sabia address",
+      "description": "Leave as is unless your Sabia contact gave you a different address.",
+      "default": "https://app2.sabiapartners.ca",
+      "required": false
+    }
+  },
+  "compatibility": {
+    "claude_desktop": ">=1.1.4173",
+    "platforms": ["darwin", "win32"],
+    "runtimes": { "node": ">=18.0.0" }
+  }
+}

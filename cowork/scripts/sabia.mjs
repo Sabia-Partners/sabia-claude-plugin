@@ -7,12 +7,7 @@ import { hostname, homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import {
-  buildCoworkLogsPayload,
-  claudeAppDataDirectory,
-  findSessionAudits,
-  readSessionEvents,
-} from "./cowork-local.mjs";
+import { claudeAppDataDirectory, syncCoworkUsage } from "./cowork-local.mjs";
 import {
   approvedHandoff,
   connectHandoff,
@@ -40,8 +35,6 @@ const cursorPath = options.cursor || join(claudeHome, "sabia-cowork-local-cursor
 const LAUNCH_AGENT_LABEL = "ca.sabiapartners.cowork-sync";
 const launchAgentPath = join(homedir(), "Library", "LaunchAgents", `${LAUNCH_AGENT_LABEL}.plist`);
 const SYNC_INTERVAL_SECONDS = 600;
-const MAX_RECORDS_PER_REQUEST = 500;
-const MAX_BYTES_PER_REQUEST = 900_000;
 
 try {
   switch (command) {
@@ -204,103 +197,24 @@ async function sync() {
   if (!state?.ingestionKey) {
     throw new Error("this device's Cowork sessions are not connected; run connect --local first");
   }
-  const baseUrl = state.baseUrl || DEFAULT_BASE_URL;
-  const content = state.content ? await contentGranted(state, baseUrl) : false;
-  if (content === null) return; // revoked; already reported
-
-  const cursors = (await readJson(cursorPath)) ?? {};
-  const audits = await findSessionAudits(options["app-data"] || claudeAppDataDirectory());
-  let sent = 0;
-  let sessions = 0;
-
-  for (const audit of audits) {
-    const previous = cursors[audit.auditPath];
-    if (previous && previous.offset === audit.size) continue;
-
-    const { events, cursor } = await readSessionEvents(audit.auditPath, previous, { content });
-    for (const batch of batches(events)) {
-      const outcome = await post(state, baseUrl, buildCoworkLogsPayload(batch, audit));
-      if (outcome === "revoked") {
-        process.stderr.write("Sabia: this device's Cowork connection was revoked. Run connect --local again.\n");
-        process.exitCode = 1;
-        return;
-      }
-      if (outcome === "retry") {
-        // This file's cursor is not advanced: it is resent from the old one.
-        process.stderr.write(`Sabia: could not reach Sabia; ${sent} events sent, the rest retry next run.\n`);
-        process.exitCode = 1;
-        return;
-      }
-      sent += batch.length;
-    }
-    if (events.length > 0) sessions += 1;
-    cursors[audit.auditPath] = cursor;
-    await writeJson(cursorPath, cursors);
-  }
-  process.stdout.write(
-    `Sent ${sent} Cowork events from ${sessions} sessions${content ? " (with content)" : ""}.\n`,
-  );
-}
-
-/** True only when content was asked for and Sabia records the grant; null when revoked. */
-async function contentGranted(state, baseUrl) {
-  const response = await fetch(new URL("/api/v1/telemetry/connection", baseUrl), {
-    headers: { authorization: `Bearer ${state.ingestionKey}` },
-    redirect: "manual",
+  const result = await syncCoworkUsage({
+    state: { ...state, baseUrl: state.baseUrl || DEFAULT_BASE_URL },
+    cursorPath,
+    appDataDirectory: options["app-data"] || claudeAppDataDirectory(),
   });
-  if (response.status === 401) {
+  if (result.status === "revoked") {
     process.stderr.write("Sabia: this device's Cowork connection was revoked. Run connect --local again.\n");
     process.exitCode = 1;
-    return null;
+    return;
   }
-  if (!response.ok) return false;
-  const sheet = await response.json().catch(() => null);
-  return Boolean(sheet?.rawCapture);
-}
-
-function* batches(events) {
-  let batch = [];
-  let bytes = 0;
-  for (const event of events) {
-    const size = Buffer.byteLength(JSON.stringify(event), "utf8") + 512;
-    if (
-      batch.length > 0 &&
-      (batch.length >= MAX_RECORDS_PER_REQUEST || bytes + size > MAX_BYTES_PER_REQUEST)
-    ) {
-      yield batch;
-      batch = [];
-      bytes = 0;
-    }
-    batch.push(event);
-    bytes += size;
+  if (result.status === "unreachable") {
+    process.stderr.write(`Sabia: could not reach Sabia; ${result.sent} events sent, the rest retry next run.\n`);
+    process.exitCode = 1;
+    return;
   }
-  if (batch.length > 0) yield batch;
-}
-
-async function post(state, baseUrl, payload) {
-  let response;
-  try {
-    response = await fetch(
-      state.otlpLogsEndpoint || new URL("/api/v1/telemetry/otlp/v1/logs", baseUrl),
-      {
-        method: "POST",
-        redirect: "manual",
-        headers: {
-          authorization: `Bearer ${state.ingestionKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      },
-    );
-  } catch {
-    return "retry";
-  }
-  if (response.status === 401) return "revoked";
-  if (response.ok) return "sent";
-  // A payload Sabia refuses as invalid would be refused again; move past it
-  // rather than resend it forever. Anything else is transient.
-  if ([400, 413, 415].includes(response.status)) return "sent";
-  return "retry";
+  process.stdout.write(
+    `Sent ${result.sent} Cowork events from ${result.sessions} sessions${result.content ? " (with content)" : ""}.\n`,
+  );
 }
 
 /** Runs sync in the background every ten minutes (macOS LaunchAgent). */

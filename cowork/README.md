@@ -25,11 +25,23 @@ The state file (`~/.claude/sabia-cowork-otel-state.json`, mode `0600`) holds
 the ingestion key because `settings`, `status`, and `disconnect` need it. Never
 paste it anywhere but the Cowork admin headers field.
 
-## Pro and Max plans: share this device's Cowork sessions
+## Pro and Max plans: the Sabia extension for Claude Desktop
 
 Cowork's OpenTelemetry export exists only on Claude Team and Enterprise plans.
-On any plan, the Claude desktop app keeps a local log of every Cowork session,
-and this helper can share it from the device:
+On any plan, Claude Desktop keeps a local log of every Cowork session. The
+**Sabia Desktop Extension** (`desktop-extension/`, released as `sabia.mcpb`)
+shares it with no terminal:
+
+1. In Sabia, **Settings → AI Providers → Claude → Add to Claude Desktop**
+   downloads `sabia.mcpb`; opening it shows Claude Desktop's install dialog.
+2. After installing, a Sabia page opens in the browser; approve it.
+3. Usage then syncs at start-up and every ten minutes while Claude is open.
+
+Ask Claude "is Sabia connected?" to see the status (`sabia_status`), or run
+`sabia_sync_now`. Content sharing is a toggle in the extension's settings and
+still needs approval in Sabia. Build it with `pnpm build:extension`.
+
+The same engine is available from the command line, for scripted installs:
 
 ```text
 node cowork/scripts/sabia.mjs connect --local            # usage only

@@ -23,9 +23,9 @@
 // unrecognised is skipped, never guessed at.
 
 import { createReadStream } from "node:fs";
-import { readdir, stat } from "node:fs/promises";
+import { chmod, mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { homedir, platform } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 
 export const SESSIONS_DIRECTORY = "local-agent-mode-sessions";
@@ -320,4 +320,125 @@ function stringAttribute(key, value) {
 
 function intAttribute(key, value) {
   return { key, value: { intValue: String(Math.trunc(value)) } };
+}
+
+const MAX_RECORDS_PER_REQUEST = 500;
+const MAX_BYTES_PER_REQUEST = 900_000;
+
+/**
+ * Sends Cowork usage (and granted content) recorded since the last run. Shared
+ * by the CLI and the Claude Desktop extension. Safe to run repeatedly: each
+ * file resumes from its saved offset, and a resent turn keeps its idempotency
+ * key. Returns what happened rather than printing, so each caller reports it
+ * in its own way.
+ *
+ * @returns {Promise<{ status: "synced" | "revoked" | "unreachable", sent: number, sessions: number, content: boolean }>}
+ */
+export async function syncCoworkUsage({ state, cursorPath, appDataDirectory, fetchImpl = fetch }) {
+  const baseUrl = state.baseUrl;
+  // Checked every run, not only when content was asked for: with nothing new
+  // to send, this is the only request that would notice a revoked key.
+  const grant = await contentGranted(state, baseUrl, fetchImpl);
+  if (grant === "revoked") return { status: "revoked", sent: 0, sessions: 0, content: false };
+  const content = Boolean(state.content) && grant === true;
+
+  const cursors = (await readJson(cursorPath)) ?? {};
+  let sent = 0;
+  let sessions = 0;
+  for (const audit of await findSessionAudits(appDataDirectory)) {
+    const previous = cursors[audit.auditPath];
+    if (previous && previous.offset === audit.size) continue;
+
+    const { events, cursor } = await readSessionEvents(audit.auditPath, previous, { content });
+    for (const batch of batches(events)) {
+      const outcome = await post(state, baseUrl, buildCoworkLogsPayload(batch, audit), fetchImpl);
+      // This file's cursor is not advanced: it is resent from the old one.
+      if (outcome !== "sent") return { status: outcome, sent, sessions, content };
+      sent += batch.length;
+    }
+    if (events.length > 0) sessions += 1;
+    cursors[audit.auditPath] = cursor;
+    await writeJson(cursorPath, cursors);
+  }
+  return { status: "synced", sent, sessions, content };
+}
+
+/** true when Sabia records the content grant, "revoked" on 401, false otherwise. */
+async function contentGranted(state, baseUrl, fetchImpl) {
+  let response;
+  try {
+    response = await fetchImpl(new URL("/api/v1/telemetry/connection", baseUrl), {
+      headers: { authorization: `Bearer ${state.ingestionKey}` },
+      redirect: "manual",
+    });
+  } catch {
+    return false;
+  }
+  if (response.status === 401) return "revoked";
+  if (!response.ok) return false;
+  const sheet = await response.json().catch(() => null);
+  return Boolean(sheet?.rawCapture);
+}
+
+function* batches(events) {
+  let batch = [];
+  let bytes = 0;
+  for (const event of events) {
+    const size = Buffer.byteLength(JSON.stringify(event), "utf8") + 512;
+    if (
+      batch.length > 0 &&
+      (batch.length >= MAX_RECORDS_PER_REQUEST || bytes + size > MAX_BYTES_PER_REQUEST)
+    ) {
+      yield batch;
+      batch = [];
+      bytes = 0;
+    }
+    batch.push(event);
+    bytes += size;
+  }
+  if (batch.length > 0) yield batch;
+}
+
+async function post(state, baseUrl, payload, fetchImpl) {
+  let response;
+  try {
+    response = await fetchImpl(
+      state.otlpLogsEndpoint || new URL("/api/v1/telemetry/otlp/v1/logs", baseUrl),
+      {
+        method: "POST",
+        redirect: "manual",
+        headers: {
+          authorization: `Bearer ${state.ingestionKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      },
+    );
+  } catch {
+    return "unreachable";
+  }
+  if (response.status === 401) return "revoked";
+  if (response.ok) return "sent";
+  // A payload Sabia refuses as invalid would be refused again; move past it
+  // rather than resend it forever. Anything else is transient.
+  if ([400, 413, 415].includes(response.status)) return "sent";
+  return "unreachable";
+}
+
+export async function readJson(path) {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/** Atomic write, owner-only: state files hold the ingestion key. */
+export async function writeJson(path, value) {
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = `${path}.${process.pid}.tmp`;
+  await writeFile(temporary, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  await chmod(temporary, 0o600);
+  await rename(temporary, path);
 }
