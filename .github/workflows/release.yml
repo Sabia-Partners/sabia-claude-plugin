@@ -18,6 +18,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check && pnpm test
       - run: tar -czf sabia-claude-plugin.tar.gz .claude-plugin .mcp.json skills scripts hooks contracts cowork README.md SECURITY.md CHANGELOG.md
-      - run: gh release create "$GITHUB_REF_NAME" sabia-claude-plugin.tar.gz --verify-tag --generate-notes
+      # The Claude Desktop extension. Sabia links to
+      # releases/latest/download/sabia.mcpb, so the asset name must not change.
+      - run: pnpm build:extension
+      - run: gh release create "$GITHUB_REF_NAME" sabia-claude-plugin.tar.gz dist/sabia.mcpb --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

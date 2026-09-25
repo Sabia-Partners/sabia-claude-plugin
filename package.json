@@ -10,7 +10,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "check": "node --check scripts/sabia.mjs && node --check scripts/sabia-http.mjs && node --check scripts/sabia-report-binding.mjs && node --check scripts/sabia-connector-hook.mjs && node --check cowork/scripts/sabia.mjs && node --check cowork/scripts/sabia-http.mjs"
+    "check": "node --check scripts/sabia.mjs && node --check scripts/sabia-http.mjs && node --check scripts/sabia-report-binding.mjs && node --check scripts/sabia-connector-hook.mjs && node --check cowork/scripts/sabia.mjs && node --check cowork/scripts/sabia-http.mjs && node --check cowork/scripts/cowork-local.mjs && node --check desktop-extension/server/index.mjs && node --check scripts/pack-desktop-extension.mjs",
+    "build:extension": "node scripts/pack-desktop-extension.mjs"
   },
   "devDependencies": {
     "vitest": "4.1.10"
