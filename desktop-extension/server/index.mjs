@@ -260,6 +260,7 @@ const tools = [
 ];
 
 async function callTool(name) {
+  await startup;
   if (name === "sabia_status") return statusText();
   if (name === "sabia_connect") {
     const state = await connectedState();
@@ -355,7 +356,9 @@ input.on("close", () => process.exit(0));
 
 // ---- start-up -------------------------------------------------------------
 
-(async () => {
+// Tool calls wait for this, so a status asked in the first milliseconds
+// reports the connection being started rather than "not connected".
+const startup = (async () => {
   try {
     if (await connectedState()) startSyncLoop();
     else await beginConnect({ open: openBrowserEnabled });
