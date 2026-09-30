@@ -30,15 +30,15 @@ The default connection sends token counts only. Tool output and raw capture
 are separate grants, described in the [README](README.md#opt-in-capture-grants).
 Ask for one only if you mean to share what it adds.
 
-## 3. Connect completed-work reporting
+## 3. Connect Output Reporting
 
 1. Run `/mcp` in Claude Code.
 2. Choose `plugin:sabia-claude-code-otel:sabia-artifacts`.
-3. Sign in to Sabia, pick your organization and approve artifact metadata
+3. Sign in to Sabia, pick your organization and approve Output Reporting metadata
    sharing.
 
 Access tokens last an hour and refresh on their own until you revoke the
-connection in Sabia → Settings → Artifact reporting. From then on, Claude
+connection in Sabia → Settings → Members → Details → Output Reporting. From then on, Claude
 reports qualifying completed work, such as a created pull request or a revised
 document, through the `report-artifact` skill.
 

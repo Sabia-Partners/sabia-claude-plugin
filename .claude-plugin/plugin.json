@@ -1,7 +1,7 @@
 {
   "name": "sabia-claude-code-otel",
   "version": "0.4.0",
-  "description": "Sabia for Claude Code: report completed work through Sabia's hosted MCP tools and connect native OpenTelemetry token usage, each with its own consent.",
+  "description": "Sabia for Claude Code: use Output Reporting for completed work through Sabia's hosted MCP tools and connect native OpenTelemetry token usage, each with its own consent.",
   "author": {
     "name": "Sabia Partners",
     "email": "hello@sabiapartners.com"

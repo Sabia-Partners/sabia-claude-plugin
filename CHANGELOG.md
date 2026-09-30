@@ -2,6 +2,8 @@
 
 ## 0.4.0 (unreleased)
 
+- Rename the reporting feature to Output Reporting and clarify completed actions on durable Artifacts. Tool names, installed identity, OAuth grants and reporting behavior stay compatible (dashboard-langfuse#182).
+
 - **Sabia for Claude Desktop** (`desktop-extension/`, released as `sabia.mcpb`): a Desktop Extension that shares Cowork usage on any Claude plan with no terminal. Claude Desktop runs it on the host; on first start it opens Sabia's approval page once, then syncs at start-up and every ten minutes while Claude is open. Tools: `sabia_status`, `sabia_connect`, `sabia_sync_now`. Content sharing is an install-time toggle and still needs approval in Sabia. It shares state with `connect --local`, so a device never holds two keys. The release workflow attaches `sabia.mcpb` so Sabia can link to `releases/latest/download/sabia.mcpb`.
 
 - Share Cowork on Pro and Max plans: `cowork/scripts/sabia.mjs connect --local` reads the desktop app's local Cowork session logs (`local-agent-mode-sessions/**/audit.jsonl`) and sends each turn's per-model token totals, call count, time and session id to the Cowork endpoint under the person's own key, then syncs every ten minutes through a macOS LaunchAgent. Totals come from each turn's `result.modelUsage`; the per-message `usage` is a streaming-start snapshot that under-reports output about thirtyfold and is never summed. `--content` asks for prompts, responses and tool inputs and results, sent only once an owner or administrator approves the grant. Needs dashboard-langfuse#147 for the per-turn request count.

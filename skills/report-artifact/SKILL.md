@@ -1,9 +1,14 @@
 ---
 name: report-artifact
-description: Report metadata about work Claude Code has successfully created, materially updated, sent, published or delivered to Sabia through its authenticated hosted MCP tools. Use after a qualifying completed operation when Sabia artifact reporting is connected.
+description: Report metadata about work Claude Code has successfully created, materially updated, sent, published or delivered to Sabia through its authenticated hosted MCP tools. Use after a qualifying completed operation when Sabia Output Reporting is connected.
 ---
 
 # Report completed work to Sabia
+
+Output Reporting records completed actions on durable work, such as documents,
+pull requests and presentations. Creating a document and later materially editing
+it produces two Outputs linked to one Artifact. A generated response or trace
+alone does not qualify.
 
 Use the connected `report_artifact` tool after the producing operation has
 succeeded. The plugin bundles the server as `sabia-artifacts`, so Claude Code
@@ -16,7 +21,7 @@ configuration that `connect-sabia` manages. Native usage collection continues
 independently through that skill and is never a substitute for a report.
 
 If the tools are missing or answer with an authorization error, the user has
-not connected artifact reporting yet: tell them to run `/mcp`, choose
+not connected Output Reporting yet: tell them to run `/mcp`, choose
 `plugin:sabia-claude-code-otel:sabia-artifacts`, sign in to Sabia and approve
 metadata sharing for their organization. Do not attempt the report another way.
 
