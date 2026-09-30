@@ -1,15 +1,20 @@
 # Sabia for Claude Code
 
+Output Reporting records completed actions on durable work, such as documents,
+pull requests and presentations. Creating a document and later materially editing
+it produces two Outputs linked to one Artifact. A generated response or trace
+alone does not qualify.
+
 **See what Claude Code actually shipped, and what it cost to ship it.**
 
 [![Plugin checks](https://github.com/Sabia-Partners/sabia-claude-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/Sabia-Partners/sabia-claude-plugin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-339933)
 
-Sabia is AI cost intelligence for teams. This plugin connects Claude Code to
+Sabia is AI Work Intelligence for teams. This plugin connects Claude Code to
 your team's Sabia workspace in two ways, and you approve each one separately:
 
-- **Completed-work reporting.** When Claude Code opens a pull request, files an
+- **Output Reporting.** When Claude Code opens a pull request, files an
   issue or revises a document, it records that work in Sabia.
 - **Native usage.** Claude Code's built-in OpenTelemetry token counts go to
   Sabia, including Max and Pro subscription usage that never appears in
@@ -26,8 +31,7 @@ that produced it.
 ```
 
 Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →
-`plugin:sabia-claude-code-otel:sabia-artifacts` to connect completed-work
-reporting. [SETUP.md](SETUP.md) walks through both, step by step.
+`plugin:sabia-claude-code-otel:sabia-artifacts` to connect Output Reporting. [SETUP.md](SETUP.md) walks through both, step by step.
 
 You need a Sabia workspace. Talk to [Sabia Partners](mailto:hello@sabiapartners.com)
 if your team does not have one yet.
@@ -39,7 +43,7 @@ your connection is sent.
 
 | Connection | Sent to Sabia | Never sent |
 | --- | --- | --- |
-| **Completed-work reporting** | For each completed piece of work: an action, a short title, the artifact type, its provider reference and identifiers, and available evidence references. | Document bodies, prompts, transcripts, file contents. |
+| **Output Reporting** | For each completed piece of work: an action, a short title, the artifact type, its provider reference and identifiers, and available evidence references. | Document bodies, prompts, transcripts, file contents. |
 | **Native usage** (default) | Token counts from Claude Code's OpenTelemetry **metrics** export. | Prompts, responses, tool arguments, file contents. Log and trace exporters stay `none`. |
 | **Report binding** (both connected) | The report's `tool_use_id` and a SHA-256 of the session id, hashed on this machine. | The raw session id, transcript, tool input, usage values. |
 
@@ -124,7 +128,7 @@ set, and in `~/.claude` otherwise.
 1. `node scripts/sabia.mjs disconnect` revokes the native usage key and
    restores whatever the managed variables held before.
 2. `/mcp` → `sabia-artifacts` → *Clear authentication* disconnects reporting on
-   this machine. Revoke it for good in Sabia → Settings → Artifact reporting.
+   this machine. Revoke it for good in Sabia → Settings → Members → Details → Output Reporting.
 3. `/plugin uninstall sabia-claude-code-otel@sabia`.
 
 Records Sabia already accepted stay in your workspace.
