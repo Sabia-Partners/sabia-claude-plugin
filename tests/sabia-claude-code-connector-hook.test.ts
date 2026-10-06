@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   connectorEnvelope, isMutation, MUTATIONS, PRIMARY_IDENTITY_KEYS as PLUGIN_PRIMARY_KEYS,
-  projectMutationIdentity as pluginProject, runConnectorHook,
+  projectMutationIdentity as pluginProject, runConnectorHook, scrubIdentityScalar,
 } from "../scripts/sabia-connector-hook.mjs";
 
 // The hook reads tool_name, tool_use_id, session_id, tool_input and
@@ -25,6 +25,20 @@ const driveCreate = {
 };
 const settings = (env: Record<string, string>) => writeFile(join(directory, "settings.json"), JSON.stringify({ env }));
 const run = (event: unknown, options: Record<string, unknown> = {}) => runConnectorHook(event, { claudeHome: directory, sleep: async () => {}, ...options });
+
+// The reply of Anthropic's Google Drive connector to create_file, captured
+// 2026-10-05: a File object with the owner's email and the viewer link.
+const realFileId = "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I";
+const realDriveCreate = {
+  ...fixture, tool_name: "mcp__0daee481-402a-4b6a-ac3e-d75d71c0a17e__create_file", tool_use_id: "toolu_01RealDriveCreate",
+  tool_input: { title: "Q4 pipeline review", textContent: "Confidential: renewal risk for Acme", contentMimeType: "text/plain" },
+  tool_response: {
+    canAddChildren: false, createdTime: "2026-10-06T00:00:38.810Z", fileSize: "1", id: realFileId,
+    mimeType: "application/vnd.google-apps.document", modifiedTime: "2026-10-06T00:00:38.426Z", owner: "lucas@example.com",
+    parentId: "0ACF99XauTAp5Uk9PVA", title: "Q4 pipeline review",
+    viewUrl: `https://docs.google.com/document/d/${realFileId}/edit?usp=drivesdk&ouid=102828164600635190347`, viewedByMeTime: "2026-10-06T00:00:39.634Z",
+  },
+};
 
 beforeEach(async () => {
   directory = await mkdtemp(join(tmpdir(), "sabia-connector-hook-"));
@@ -109,6 +123,37 @@ describe("Claude Code connector hook", () => {
     expect(await run(driveCreate, { fetch })).toEqual({ sent: false, reason: "no_trace_grant" });
     await settings({ OTEL_TRACES_EXPORTER: "otlp" });
     expect(await run(driveCreate, { fetch })).toEqual({ sent: false, reason: "no_credential" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("identifies a Doc from the real Drive connector's reply, raw or as a content block, and drops the owner and the body", () => {
+    for (const tool_response of [realDriveCreate.tool_response, [{ type: "text", text: JSON.stringify(realDriveCreate.tool_response) }]]) {
+      const text = JSON.stringify(connectorEnvelope({ ...realDriveCreate, tool_response }));
+      expect(text).toContain(realFileId);
+      expect(text).toContain("Q4 pipeline review");
+      for (const secret of ["lucas@example.com", "Confidential", "renewal risk", "ouid=", "0ACF99XauTAp5Uk9PVA"]) expect(text, secret).not.toContain(secret);
+    }
+  });
+  it("drops padded owner emails and keeps URL identities, like the dashboard", () => {
+    expect(scrubIdentityScalar(" lucas@example.com ")).toBeNull();
+    expect(scrubIdentityScalar("sabia-partners")).toBe("sabia-partners");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=lucas@example.com")).toBe("https://github.com/acme/app/pull/42");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?usp=sharing")).toBe("https://github.com/acme/app/pull/42?usp=sharing");
+    // An unrelated malformed escape must not hide an encoded address.
+    for (const tail of ["note=100%", "tag=%FF"]) {
+      const kept = scrubIdentityScalar(`https://github.com/acme/app/pull/42?contact=lucas%40example.com&${tail}`);
+      expect(new URL(kept).searchParams.get("contact"), tail).toBeNull();
+      expect(kept.startsWith("https://github.com/acme/app/pull/42"), tail).toBe(true);
+    }
+    const padded = { ...realDriveCreate, tool_response: [{ type: "text", text: JSON.stringify({ ...realDriveCreate.tool_response, owner: " lucas@example.com " }) }] };
+    expect(JSON.stringify(connectorEnvelope(padded))).not.toContain("lucas@example.com");
+  });
+  it("never reads the credential from the hook's environment, which Claude Code withholds OTEL_* from", async () => {
+    await rm(join(directory, "sabia-otel-state.json"));
+    const fetch = vi.fn();
+    process.env.OTEL_EXPORTER_OTLP_HEADERS = `Authorization=Bearer ${token}`;
+    try {
+      expect(await run(realDriveCreate, { fetch })).toEqual({ sent: false, reason: "no_credential" });
+    } finally { delete process.env.OTEL_EXPORTER_OTLP_HEADERS; }
     expect(fetch).not.toHaveBeenCalled();
   });
 });
