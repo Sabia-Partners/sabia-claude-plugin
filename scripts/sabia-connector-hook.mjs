@@ -214,7 +214,7 @@ export function connectorEnvelope(event, now = Date.now()) {
 
 const INGESTION_KEY = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
 // Signal endpoints the exporter posts to, and the base an OTEL_EXPORTER_OTLP_ENDPOINT names.
-const EXPORTER_PATHS = ["/api/v1/telemetry/otlp", "/api/v1/telemetry/otlp/v1/metrics", "/api/v1/telemetry/otlp/v1/traces"];
+const EXPORTER_PATHS = ["/api/v1/telemetry/otlp", "/api/v1/telemetry/otlp/v1/metrics", "/api/v1/telemetry/otlp/v1/traces", "/api/v1/telemetry/traces"];
 
 async function managedEnv(claudeHome) {
   try {

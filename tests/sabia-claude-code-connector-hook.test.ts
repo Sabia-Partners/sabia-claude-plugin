@@ -147,6 +147,10 @@ describe("Claude Code connector hook", () => {
     await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: null, endpoint }));
     expect(await run(realDriveCreate, { fetch })).toEqual({ sent: true, attempts: 1 });
   });
+  it("reads the traces-only endpoint Sabia's connect flow writes", () => {
+    expect(exporterCredential({ OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "https://app2.sabiapartners.ca/api/v1/telemetry/traces", OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}` }))
+      .toEqual({ token, endpoint: "https://app2.sabiapartners.ca" });
+  });
   it("reads the exporter's base endpoint and a combined traces exporter list", () => {
     expect(exporterCredential({ OTEL_EXPORTER_OTLP_ENDPOINT: "https://app2.sabiapartners.ca/api/v1/telemetry/otlp/", OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}` }))
       .toEqual({ token, endpoint: "https://app2.sabiapartners.ca" });
