@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  connectorEnvelope, exporterCredential, isMutation, MUTATIONS, PRIMARY_IDENTITY_KEYS as PLUGIN_PRIMARY_KEYS,
-  projectMutationIdentity as pluginProject, runConnectorHook,
+  connectorEnvelope, isMutation, MUTATIONS, PRIMARY_IDENTITY_KEYS as PLUGIN_PRIMARY_KEYS,
+  projectMutationIdentity as pluginProject, runConnectorHook, scrubIdentityScalar,
 } from "../scripts/sabia-connector-hook.mjs";
 
 // The hook reads tool_name, tool_use_id, session_id, tool_input and
@@ -24,7 +24,7 @@ const driveCreate = {
   tool_response: [{ type: "text", text: JSON.stringify({ id: fileId, name: "GTM one-pager", mimeType: "application/vnd.google-apps.document", webViewLink: `https://docs.google.com/document/d/${fileId}/edit`, content: "Dear investor, here is why Sabia…" }) }],
 };
 const settings = (env: Record<string, string>) => writeFile(join(directory, "settings.json"), JSON.stringify({ env }));
-const run = (event: unknown, options: Record<string, unknown> = {}) => runConnectorHook(event, { claudeHome: directory, env: {}, sleep: async () => {}, ...options });
+const run = (event: unknown, options: Record<string, unknown> = {}) => runConnectorHook(event, { claudeHome: directory, sleep: async () => {}, ...options });
 
 // The reply of Anthropic's Google Drive connector to create_file, captured
 // 2026-10-05: a File object with the owner's email and the viewer link.
@@ -133,35 +133,21 @@ describe("Claude Code connector hook", () => {
       for (const secret of ["lucas@example.com", "Confidential", "renewal risk", "ouid=", "0ACF99XauTAp5Uk9PVA"]) expect(text, secret).not.toContain(secret);
     }
   });
-  it("falls back to the exporter's own env when the connect flow wrote no managed state", async () => {
+  it("drops padded owner emails and keeps URL identities, like the dashboard", () => {
+    expect(scrubIdentityScalar(" lucas@example.com ")).toBeNull();
+    expect(scrubIdentityScalar("sabia-partners")).toBe("sabia-partners");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=lucas@example.com")).toBe("https://github.com/acme/app/pull/42");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?usp=sharing")).toBe("https://github.com/acme/app/pull/42?usp=sharing");
+    const padded = { ...realDriveCreate, tool_response: [{ type: "text", text: JSON.stringify({ ...realDriveCreate.tool_response, owner: " lucas@example.com " }) }] };
+    expect(JSON.stringify(connectorEnvelope(padded))).not.toContain("lucas@example.com");
+  });
+  it("never reads the credential from the hook's environment, which Claude Code withholds OTEL_* from", async () => {
     await rm(join(directory, "sabia-otel-state.json"));
-    await settings({});
-    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
-    const env = { OTEL_TRACES_EXPORTER: "otlp", OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}` };
-    expect(await run(realDriveCreate, { fetch, env })).toEqual({ sent: true, attempts: 1 });
-    expect(fetch).toHaveBeenCalledWith("https://app2.sabiapartners.ca/api/v1/telemetry/claude-code/hooks",
-      expect.objectContaining({ headers: expect.objectContaining({ authorization: `Bearer ${token}` }) }));
-    // The same variables written into settings.json (a hand-edited setup, or `configure` with no organization).
-    fetch.mockClear();
-    await settings(env);
-    await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: null, endpoint }));
-    expect(await run(realDriveCreate, { fetch })).toEqual({ sent: true, attempts: 1 });
-  });
-  it("reads the traces-only endpoint Sabia's connect flow writes", () => {
-    expect(exporterCredential({ OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "https://app2.sabiapartners.ca/api/v1/telemetry/traces", OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}` }))
-      .toEqual({ token, endpoint: "https://app2.sabiapartners.ca" });
-  });
-  it("reads the exporter's base endpoint and a combined traces exporter list", () => {
-    expect(exporterCredential({ OTEL_EXPORTER_OTLP_ENDPOINT: "https://app2.sabiapartners.ca/api/v1/telemetry/otlp/", OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}` }))
-      .toEqual({ token, endpoint: "https://app2.sabiapartners.ca" });
-  });
-  it("never sends a key anywhere but a Sabia exporter over HTTPS", () => {
-    const headers = `Authorization=Bearer ${token}`;
-    for (const url of [
-      "http://app2.sabiapartners.ca/api/v1/telemetry/otlp", "https://collector.example.com/v1/metrics", "https://app2.sabiapartners.ca/api/v1/telemetry/otlp?x=1",
-      "https://user:pass@app2.sabiapartners.ca/api/v1/telemetry/otlp", "not a url",
-    ]) expect(exporterCredential({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: url, OTEL_EXPORTER_OTLP_HEADERS: headers }), url).toBeNull();
-    expect(exporterCredential({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: endpoint, OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Bearer some-other-token" })).toBeNull();
-    expect(exporterCredential({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: "http://localhost:3000/api/v1/telemetry/otlp", OTEL_EXPORTER_OTLP_HEADERS: headers })).toEqual({ token, endpoint: "http://localhost:3000" });
+    const fetch = vi.fn();
+    process.env.OTEL_EXPORTER_OTLP_HEADERS = `Authorization=Bearer ${token}`;
+    try {
+      expect(await run(realDriveCreate, { fetch })).toEqual({ sent: false, reason: "no_credential" });
+    } finally { delete process.env.OTEL_EXPORTER_OTLP_HEADERS; }
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -85,13 +85,33 @@ function decodeStructured(value, state, depth = 0) {
 }
 // No Artifact is identified by a person's email address, but connector replies
 // carry them under allowlisted keys: a Drive File's `owner` is the owner's email.
-const EMAIL_ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// A URL is kept, minus any part that carries an address. Port of the
+// dashboard's scrubIdentityScalar, pinned by contracts/connector-hook/v1.json.
+const EMAIL_ADDRESS = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
+const CONTAINS_EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+/;
+function decodeSafely(value) {
+  try { return decodeURIComponent(value); } catch { return value; }
+}
+export function scrubIdentityScalar(value) {
+  const trimmed = value.trim();
+  if (EMAIL_ADDRESS.test(trimmed)) return null;
+  if (!CONTAINS_EMAIL.test(decodeSafely(trimmed))) return value;
+  if (!/^https?:\/\//i.test(trimmed)) return null;
+  let url;
+  try { url = new URL(trimmed); } catch { return null; }
+  url.username = ""; url.password = "";
+  for (const [key, entry] of [...url.searchParams.entries()]) {
+    if (CONTAINS_EMAIL.test(key) || CONTAINS_EMAIL.test(entry)) url.searchParams.delete(key);
+  }
+  if (CONTAINS_EMAIL.test(decodeSafely(url.hash))) url.hash = "";
+  const scrubbed = url.toString();
+  return CONTAINS_EMAIL.test(decodeSafely(scrubbed)) ? null : scrubbed;
+}
 function boundedScalar(value, state) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return null;
   if (value.length > MAX_SCALAR_CHARS) { state.tooLarge = true; return null; }
-  if (EMAIL_ADDRESS.test(value)) return null;
-  return value;
+  return scrubIdentityScalar(value);
 }
 function projectRequestActions(value, state) {
   const decoded = decodeStructured(value, state);
@@ -118,7 +138,7 @@ function projectValue(value, allowActionRequests, state, depth) {
     const literal = decoded.trim();
     if (!isIdentityLiteral(literal)) return null;
     if (literal.length > MAX_SCALAR_CHARS) { state.tooLarge = true; return null; }
-    return literal;
+    return scrubIdentityScalar(literal);
   }
   if (Array.isArray(decoded)) {
     const blocks = decoded.slice(0, MAX_ARRAY_ITEMS).flatMap((item) => {
@@ -212,55 +232,22 @@ export function connectorEnvelope(event, now = Date.now()) {
   return Buffer.byteLength(JSON.stringify(envelope), "utf8") > MAX_ENVELOPE_BYTES ? null : envelope;
 }
 
-const INGESTION_KEY = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
-// Signal endpoints the exporter posts to, and the base an OTEL_EXPORTER_OTLP_ENDPOINT names.
-const EXPORTER_PATHS = ["/api/v1/telemetry/otlp", "/api/v1/telemetry/otlp/v1/metrics", "/api/v1/telemetry/otlp/v1/traces", "/api/v1/telemetry/traces"];
-
-async function managedEnv(claudeHome) {
+/** The tool-output grant is what the server checks; read it from the managed
+ * env so a machine without it never posts. Claude Code withholds OTEL_*
+ * variables from hooks, so the connect flow's settings are the only source. */
+async function traceCaptureGranted(claudeHome) {
   try {
     const settings = JSON.parse(await readFile(join(claudeHome, "settings.json"), "utf8"));
-    return settings?.env && typeof settings.env === "object" ? settings.env : {};
-  } catch { return {}; }
-}
-
-/** The tool-output grant is what the server checks; a machine whose exporter
- * sends no traces never posts. Claude Code passes its settings env to hooks,
- * so the process env covers telemetry set up by hand or by managed settings. */
-async function traceCaptureGranted(claudeHome, env) {
-  const exporters = [(await managedEnv(claudeHome)).OTEL_TRACES_EXPORTER, env.OTEL_TRACES_EXPORTER];
-  return exporters.some((value) => typeof value === "string" && value.split(",").map((v) => v.trim()).includes("otlp"));
-}
-
-/** The exporter's own Sabia key and origin, read from the env Claude Code
- * exports telemetry with. Used only when the plugin's connect flow did not
- * write its managed state, and only for a Sabia ingestion key bound for a
- * Sabia exporter path over HTTPS (or loopback): the key goes nowhere it is
- * not already sent. */
-export function exporterCredential(env) {
-  const token = typeof env.OTEL_EXPORTER_OTLP_HEADERS === "string" ? env.OTEL_EXPORTER_OTLP_HEADERS.match(INGESTION_KEY)?.[1] : null;
-  const raw = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ?? env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? env.OTEL_EXPORTER_OTLP_ENDPOINT;
-  if (!token || typeof raw !== "string") return null;
-  let url;
-  try { url = new URL(raw); } catch { return null; }
-  if (url.username || url.password || url.search || url.hash) return null;
-  if (!EXPORTER_PATHS.includes(url.pathname.replace(/\/$/, ""))) return null;
-  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) return null;
-  return { token, endpoint: url.origin };
-}
-
-async function credential(claudeHome, env) {
-  const managed = await deviceContext(claudeHome).catch(() => null);
-  if (managed) return { token: managed.token, endpoint: managed.endpoint };
-  return exporterCredential({ ...(await managedEnv(claudeHome)), ...env });
+    return settings?.env?.OTEL_TRACES_EXPORTER === "otlp";
+  } catch { return false; }
 }
 
 export async function runConnectorHook(event, options = {}) {
   const claudeHome = options.claudeHome ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
-  const env = options.env ?? process.env;
   const envelope = connectorEnvelope(event, options.now);
   if (!envelope) return { sent: false, reason: "not_a_mutation" };
-  if (!await traceCaptureGranted(claudeHome, env)) return { sent: false, reason: "no_trace_grant" };
-  const context = await credential(claudeHome, env);
+  if (!await traceCaptureGranted(claudeHome)) return { sent: false, reason: "no_trace_grant" };
+  const context = await deviceContext(claudeHome).catch(() => null);
   if (!context) return { sent: false, reason: "no_credential" };
   const endpoint = new URL("/api/v1/telemetry/claude-code/hooks", context.endpoint).href;
   const body = JSON.stringify(envelope);

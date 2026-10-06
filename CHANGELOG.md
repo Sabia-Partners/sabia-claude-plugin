@@ -2,9 +2,9 @@
 
 ## 0.4.1 (unreleased)
 
-- The connector hook now works when telemetry was set up without the plugin's `connect` flow. It falls back to the key and endpoint Claude Code already exports with (from the environment Claude Code passes to hooks), only for a Sabia ingestion key bound for a Sabia exporter path over HTTPS or loopback. Before, a Doc created through the Drive connector stayed invisible on any machine configured by hand, by managed settings, or by `configure` (which records no organization).
-- The connector hook and the dashboard drop email addresses from connector identities. The Google Drive connector's `create_file` reply names the file's owner by email under the allowlisted `owner` key; it no longer leaves the machine (dashboard-langfuse change of the same name).
+- The connector hook and the dashboard drop email addresses from connector identities. The Google Drive connector's `create_file` reply names the file's owner by email under the allowlisted `owner` key. A bare or padded address is dropped; a URL keeps its identity minus any userinfo, query parameter or fragment that carries one. Matches dashboard-langfuse#268 through the shared contract.
 - Pin the real Drive connector's `create_file` arguments (`title`, `textContent`, `contentMimeType`) and reply (a File object) in the tests and the shared contract.
+- The hook still needs the state and settings the `connect` flow writes. Claude Code withholds `OTEL_*` variables from hooks, so machines whose telemetry was set up by hand or by managed settings must run `connect` for connector creations to be reported.
 
 ## 0.4.0 (unreleased)
 

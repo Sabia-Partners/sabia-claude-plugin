@@ -302,6 +302,140 @@
         },
         "omissionReason": null
       }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+            "owner": " lucas@example.com ",
+            "title": "Q4 pipeline review"
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": {
+              "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+              "title": "Q4 pipeline review"
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": [
+            {
+              "type": "text",
+              "text": "{\"id\":\"1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I\",\"owner\":\" lucas@example.com \",\"title\":\"Q4 pipeline review\"}"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": [
+              {
+                "type": "text",
+                "text": {
+                  "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+                  "title": "Q4 pipeline review"
+                }
+              }
+            ]
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "url": "https://github.com/acme/app/pull/42?contact=lucas@example.com",
+            "number": 42
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": {
+              "url": "https://github.com/acme/app/pull/42",
+              "number": 42
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": "https://github.com/acme/app/pull/42?contact=lucas%40example.com&tab=files"
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": "https://github.com/acme/app/pull/42?tab=files"
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": {
+          "input": {
+            "owner": "sabia-partners",
+            "repo": "dashboard-langfuse",
+            "title": "secret title"
+          }
+        },
+        "resultProjection": {
+          "output": {
+            "number": 7,
+            "html_url": "https://github.com/sabia-partners/dashboard-langfuse/pull/7"
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": {
+            "input": {
+              "owner": "sabia-partners",
+              "repo": "dashboard-langfuse",
+              "title": "secret title"
+            }
+          },
+          "result": {
+            "output": {
+              "number": 7,
+              "html_url": "https://github.com/sabia-partners/dashboard-langfuse/pull/7"
+            }
+          }
+        },
+        "omissionReason": null
+      }
     }
   ]
 }
