@@ -436,6 +436,78 @@
         },
         "omissionReason": null
       }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "url": "https://github.com/acme/app/pull/42?contact=lucas%40example.com&note=100%",
+            "number": 42
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": {
+              "url": "https://github.com/acme/app/pull/42?note=100%25",
+              "number": 42
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": "https://github.com/acme/app/pull/42?contact=lucas%40example.com&tag=%FF"
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": "https://github.com/acme/app/pull/42?tag=%EF%BF%BD"
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": [
+            {
+              "type": "text",
+              "text": "{\"url\":\"https://github.com/acme/app/pull/42?contact=lucas%40example.com&note=100%\"}"
+            }
+          ]
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": [
+              {
+                "type": "text",
+                "text": {
+                  "url": "https://github.com/acme/app/pull/42?note=100%25"
+                }
+              }
+            ]
+          }
+        },
+        "omissionReason": null
+      }
     }
   ]
 }

@@ -89,23 +89,36 @@ function decodeStructured(value, state, depth = 0) {
 // dashboard's scrubIdentityScalar, pinned by contracts/connector-hook/v1.json.
 const EMAIL_ADDRESS = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
 const CONTAINS_EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+/;
-function decodeSafely(value) {
-  try { return decodeURIComponent(value); } catch { return value; }
+/** Decodes every well-formed percent escape and leaves malformed ones as they are. */
+function decodeLeniently(value) {
+  return value.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
+    try { return decodeURIComponent(run); } catch {
+      return run.replace(/%[0-9A-Fa-f]{2}/g, (escape) => {
+        const byte = parseInt(escape.slice(1), 16);
+        return byte < 0x80 ? String.fromCharCode(byte) : escape;
+      });
+    }
+  });
 }
 export function scrubIdentityScalar(value) {
   const trimmed = value.trim();
   if (EMAIL_ADDRESS.test(trimmed)) return null;
-  if (!CONTAINS_EMAIL.test(decodeSafely(trimmed))) return value;
-  if (!/^https?:\/\//i.test(trimmed)) return null;
+  if (!/^https?:\/\//i.test(trimmed)) return CONTAINS_EMAIL.test(decodeLeniently(trimmed)) ? null : value;
   let url;
-  try { url = new URL(trimmed); } catch { return null; }
-  url.username = ""; url.password = "";
-  for (const [key, entry] of [...url.searchParams.entries()]) {
-    if (CONTAINS_EMAIL.test(key) || CONTAINS_EMAIL.test(entry)) url.searchParams.delete(key);
+  try { url = new URL(trimmed); } catch { return CONTAINS_EMAIL.test(decodeLeniently(trimmed)) ? null : value; }
+  // Each component is checked on its own decoded value, so a malformed escape
+  // in one parameter cannot hide an address in another.
+  if (CONTAINS_EMAIL.test(decodeLeniently(url.pathname))) return null;
+  let changed = false;
+  if ((url.username || url.password) && CONTAINS_EMAIL.test(decodeLeniently(`${url.username}:${url.password}`))) {
+    url.username = ""; url.password = ""; changed = true;
   }
-  if (CONTAINS_EMAIL.test(decodeSafely(url.hash))) url.hash = "";
-  const scrubbed = url.toString();
-  return CONTAINS_EMAIL.test(decodeSafely(scrubbed)) ? null : scrubbed;
+  for (const [key, entry] of [...url.searchParams.entries()]) {
+    if (CONTAINS_EMAIL.test(decodeLeniently(key)) || CONTAINS_EMAIL.test(decodeLeniently(entry))) { url.searchParams.delete(key); changed = true; }
+  }
+  if (CONTAINS_EMAIL.test(decodeLeniently(url.hash))) { url.hash = ""; changed = true; }
+  const kept = changed ? url.toString() : value;
+  return CONTAINS_EMAIL.test(decodeLeniently(kept)) ? null : kept;
 }
 function boundedScalar(value, state) {
   if (typeof value === "number" && Number.isFinite(value)) return value;

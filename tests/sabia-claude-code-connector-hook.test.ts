@@ -138,6 +138,12 @@ describe("Claude Code connector hook", () => {
     expect(scrubIdentityScalar("sabia-partners")).toBe("sabia-partners");
     expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=lucas@example.com")).toBe("https://github.com/acme/app/pull/42");
     expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?usp=sharing")).toBe("https://github.com/acme/app/pull/42?usp=sharing");
+    // An unrelated malformed escape must not hide an encoded address.
+    for (const tail of ["note=100%", "tag=%FF"]) {
+      const kept = scrubIdentityScalar(`https://github.com/acme/app/pull/42?contact=lucas%40example.com&${tail}`);
+      expect(new URL(kept).searchParams.get("contact"), tail).toBeNull();
+      expect(kept.startsWith("https://github.com/acme/app/pull/42"), tail).toBe(true);
+    }
     const padded = { ...realDriveCreate, tool_response: [{ type: "text", text: JSON.stringify({ ...realDriveCreate.tool_response, owner: " lucas@example.com " }) }] };
     expect(JSON.stringify(connectorEnvelope(padded))).not.toContain("lucas@example.com");
   });
