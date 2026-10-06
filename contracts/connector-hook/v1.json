@@ -258,6 +258,50 @@
         },
         "omissionReason": null
       }
+    },
+    {
+      "input": {
+        "inputProjection": {
+          "input": {
+            "title": "Q4 pipeline review",
+            "textContent": "Confidential: renewal risk for Acme",
+            "contentMimeType": "text/plain"
+          }
+        },
+        "resultProjection": {
+          "output": {
+            "canAddChildren": false,
+            "createdTime": "2026-10-06T00:00:38.810Z",
+            "fileSize": "1",
+            "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+            "mimeType": "application/vnd.google-apps.document",
+            "modifiedTime": "2026-10-06T00:00:38.426Z",
+            "owner": "lucas@example.com",
+            "parentId": "0ACF99XauTAp5Uk9PVA",
+            "title": "Q4 pipeline review",
+            "viewUrl": "https://docs.google.com/document/d/1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I/edit?usp=drivesdk&ouid=102828164600635190347",
+            "viewedByMeTime": "2026-10-06T00:00:39.634Z"
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": {
+            "input": {
+              "title": "Q4 pipeline review"
+            }
+          },
+          "result": {
+            "output": {
+              "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+              "mimeType": "application/vnd.google-apps.document",
+              "title": "Q4 pipeline review"
+            }
+          }
+        },
+        "omissionReason": null
+      }
     }
   ]
 }

@@ -83,10 +83,14 @@ function decodeStructured(value, state, depth = 0) {
   if (candidates.some((c) => /^[\[{]/.test(c) || /[\[{]\s*\\?["']/.test(c))) state.malformed = true;
   return value;
 }
+// No Artifact is identified by a person's email address, but connector replies
+// carry them under allowlisted keys: a Drive File's `owner` is the owner's email.
+const EMAIL_ADDRESS = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function boundedScalar(value, state) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string") return null;
   if (value.length > MAX_SCALAR_CHARS) { state.tooLarge = true; return null; }
+  if (EMAIL_ADDRESS.test(value)) return null;
   return value;
 }
 function projectRequestActions(value, state) {
@@ -208,21 +212,55 @@ export function connectorEnvelope(event, now = Date.now()) {
   return Buffer.byteLength(JSON.stringify(envelope), "utf8") > MAX_ENVELOPE_BYTES ? null : envelope;
 }
 
-/** The tool-output grant is what the server checks; read it from the managed
- * env so a machine without it never posts. */
-async function traceCaptureGranted(claudeHome) {
+const INGESTION_KEY = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
+// Signal endpoints the exporter posts to, and the base an OTEL_EXPORTER_OTLP_ENDPOINT names.
+const EXPORTER_PATHS = ["/api/v1/telemetry/otlp", "/api/v1/telemetry/otlp/v1/metrics", "/api/v1/telemetry/otlp/v1/traces"];
+
+async function managedEnv(claudeHome) {
   try {
     const settings = JSON.parse(await readFile(join(claudeHome, "settings.json"), "utf8"));
-    return settings?.env?.OTEL_TRACES_EXPORTER === "otlp";
-  } catch { return false; }
+    return settings?.env && typeof settings.env === "object" ? settings.env : {};
+  } catch { return {}; }
+}
+
+/** The tool-output grant is what the server checks; a machine whose exporter
+ * sends no traces never posts. Claude Code passes its settings env to hooks,
+ * so the process env covers telemetry set up by hand or by managed settings. */
+async function traceCaptureGranted(claudeHome, env) {
+  const exporters = [(await managedEnv(claudeHome)).OTEL_TRACES_EXPORTER, env.OTEL_TRACES_EXPORTER];
+  return exporters.some((value) => typeof value === "string" && value.split(",").map((v) => v.trim()).includes("otlp"));
+}
+
+/** The exporter's own Sabia key and origin, read from the env Claude Code
+ * exports telemetry with. Used only when the plugin's connect flow did not
+ * write its managed state, and only for a Sabia ingestion key bound for a
+ * Sabia exporter path over HTTPS (or loopback): the key goes nowhere it is
+ * not already sent. */
+export function exporterCredential(env) {
+  const token = typeof env.OTEL_EXPORTER_OTLP_HEADERS === "string" ? env.OTEL_EXPORTER_OTLP_HEADERS.match(INGESTION_KEY)?.[1] : null;
+  const raw = env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT ?? env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT ?? env.OTEL_EXPORTER_OTLP_ENDPOINT;
+  if (!token || typeof raw !== "string") return null;
+  let url;
+  try { url = new URL(raw); } catch { return null; }
+  if (url.username || url.password || url.search || url.hash) return null;
+  if (!EXPORTER_PATHS.includes(url.pathname.replace(/\/$/, ""))) return null;
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname))) return null;
+  return { token, endpoint: url.origin };
+}
+
+async function credential(claudeHome, env) {
+  const managed = await deviceContext(claudeHome).catch(() => null);
+  if (managed) return { token: managed.token, endpoint: managed.endpoint };
+  return exporterCredential({ ...(await managedEnv(claudeHome)), ...env });
 }
 
 export async function runConnectorHook(event, options = {}) {
   const claudeHome = options.claudeHome ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
+  const env = options.env ?? process.env;
   const envelope = connectorEnvelope(event, options.now);
   if (!envelope) return { sent: false, reason: "not_a_mutation" };
-  if (!await traceCaptureGranted(claudeHome)) return { sent: false, reason: "no_trace_grant" };
-  const context = await deviceContext(claudeHome).catch(() => null);
+  if (!await traceCaptureGranted(claudeHome, env)) return { sent: false, reason: "no_trace_grant" };
+  const context = await credential(claudeHome, env);
   if (!context) return { sent: false, reason: "no_credential" };
   const endpoint = new URL("/api/v1/telemetry/claude-code/hooks", context.endpoint).href;
   const body = JSON.stringify(envelope);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 (unreleased)
+
+- The connector hook now works when telemetry was set up without the plugin's `connect` flow. It falls back to the key and endpoint Claude Code already exports with (from the environment Claude Code passes to hooks), only for a Sabia ingestion key bound for a Sabia exporter path over HTTPS or loopback. Before, a Doc created through the Drive connector stayed invisible on any machine configured by hand, by managed settings, or by `configure` (which records no organization).
+- The connector hook and the dashboard drop email addresses from connector identities. The Google Drive connector's `create_file` reply names the file's owner by email under the allowlisted `owner` key; it no longer leaves the machine (dashboard-langfuse change of the same name).
+- Pin the real Drive connector's `create_file` arguments (`title`, `textContent`, `contentMimeType`) and reply (a File object) in the tests and the shared contract.
+
 ## 0.4.0 (unreleased)
 
 - Rename the reporting feature to Output Reporting and clarify completed actions on durable Artifacts. Tool names, installed identity, OAuth grants and reporting behavior stay compatible (dashboard-langfuse#182).
