@@ -5,9 +5,13 @@
 // see. This hook reads the reply, keeps the identifiers the server would keep
 // from telemetry, and posts them under the tool-output grant. Nothing else
 // leaves the machine: no prompts, no document bodies, no transcript.
-import { readFile } from "node:fs/promises";
+//
+// Which operations count and which identifiers survive is Sabia's connector
+// hook contract. The hook fetches it from the connected Sabia, caches it, and
+// falls back to the last good copy and then to the vendored v1 contract.
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { deviceContext } from "./sabia-report-binding.mjs";
@@ -22,8 +26,9 @@ const TOTAL_BUDGET_MS = 6000;
 // Sabia's own reporting server is never a producing tool.
 const SABIA_SERVERS = /^(?:plugin_[A-Za-z0-9._-]+_)?(?:sabia[_-]artifacts|sabia[_-]artifact[_-]reporting)$/;
 
-/** Drive and GitHub operations with extraction rules today. Pinned against the
- * dashboard's CLAUDE_CODE_HOOK_MUTATIONS by a test; the server refuses the rest. */
+/** Drive and GitHub operations with extraction rules: the vendored v1
+ * contract, applied until a contract has been fetched from Sabia. Pinned
+ * against contracts/connector-hook/v1.json by a test. */
 export const MUTATIONS = [
   "update_file", "update_document", "update_spreadsheet", "update_presentation", "append_text", "insert_text",
   "replace_text", "delete_text", "append_values", "update_values", "clear_values", "batch_update", "write_file",
@@ -36,8 +41,9 @@ export const MUTATIONS = [
   "create_issue", "update_issue", "add_issue_comment", "add_comment_to_issue",
 ];
 
-// ---- Identity allowlist: a port of the dashboard's projectMutationIdentity.
-// A pin test runs both over the same fixtures; any drift fails the build.
+// ---- Identity allowlist: a port of the dashboard's projectMutationIdentity
+// (src/modules/observations/domain/mutation-identity-projection.ts). Pin tests
+// run both over the same fixtures; any drift fails the build.
 export const PRIMARY_IDENTITY_KEYS = new Set([
   "url", "html_url", "externalId", "external_id", "id", "identifier", "fullIdentifier", "full_identifier",
   "number", "issue_number", "issueNumber", "issueId", "issue_id", "commentId", "comment_id", "pull_number", "pullNumber", "pr_number",
@@ -45,7 +51,8 @@ export const PRIMARY_IDENTITY_KEYS = new Set([
   "fileId", "file_id", "documentId", "document_id", "spreadsheetId", "spreadsheet_id", "presentationId", "presentation_id",
   "mimeType", "mime_type", "webViewLink", "document_url", "spreadsheet_url", "presentation_url", "title",
 ]);
-const IDENTITY_KEYS = new Set([...PRIMARY_IDENTITY_KEYS, "file_name", "newSpreadsheetId", "newSpreadsheetUrl", "team"]);
+// Specialized create/action keys the server keeps beside the primary ones.
+const SPECIALIZED_IDENTITY_KEYS = ["file_name", "newSpreadsheetId", "newSpreadsheetUrl", "team"];
 const WRAPPER_KEYS = new Set([
   "result", "structuredContent", "structured_content", "data", "issue", "comment", "pull_request", "pullRequest", "output",
   "commit", "file", "document", "spreadsheet", "presentation", "content", "created_comments", "created_replies",
@@ -54,7 +61,101 @@ const INPUT_FIELDS = ["input", "tool.input", "tool_input", "arguments", "tool.ar
 const RESULT_FIELDS = ["output", "tool.output", "tool_output", "body", "tool.result"];
 const MAX_PROJECTION_BYTES = 32 * 1024, MAX_SCALAR_CHARS = 4096, MAX_PARSE_DEPTH = 6, MAX_WALK_DEPTH = 8, MAX_ARRAY_ITEMS = 128;
 
+/** Reserved key on a projected side: { "<source>": { "<as>": scalar | scalar[] } }. */
+export const WORK_SOURCE_IDENTITY_KEY = "work_source_identity";
+const MAX_PATH_VALUE_CHARS = 2048;
+/** Provider ids and keys: no whitespace, so no names, titles or prose. */
+const OPAQUE_IDENTITY_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@#/+=~-]{0,255}$/;
+/** MCP transport envelopes an identity path may sit inside. */
+const IDENTITY_PATH_TRANSPORT_KEYS = ["structuredContent", "structured_content", "content", "result"];
+
+// ---- Identity path grammar: a port of the dashboard's
+// src/modules/quality/domain/work-sources/identity-path.ts. A path is a dot
+// path of keys with `[]` after a key that holds an array.
+const MAX_IDENTITY_PATH_SEGMENTS = 8, MAX_IDENTITY_PATH_CHARS = 256, MAX_IDENTITY_PATH_OPERATIONS = 32;
+const MAX_IDENTITY_PATHS_PER_SOURCE = 64;
+export const IDENTITY_AS_PATTERN = /^[a-z][a-z0-9_]{0,40}$/;
+const SEGMENT_PATTERN = /^([A-Za-z_$][A-Za-z0-9_$-]{0,63})(\[\])?$/;
+const OPERATION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}$/;
+const FORBIDDEN_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+
+/** Parsed segments, or null when the path is not in the grammar. */
+export function parseIdentityPath(path) {
+  if (typeof path !== "string" || path.length === 0 || path.length > MAX_IDENTITY_PATH_CHARS) return null;
+  const parts = path.split(".");
+  if (parts.length > MAX_IDENTITY_PATH_SEGMENTS) return null;
+  const segments = [];
+  for (const part of parts) {
+    const match = SEGMENT_PATTERN.exec(part);
+    if (!match || FORBIDDEN_KEYS.has(match[1])) return null;
+    segments.push({ key: match[1], array: match[2] === "[]" });
+  }
+  return segments;
+}
+
+/** The dashboard's toolNameMatchesOperation: case-insensitive on both sides. */
+export function toolNameMatchesOperation(toolName, operation) {
+  const name = toolName.trim().toLowerCase(), op = operation.trim().toLowerCase();
+  return name === op || name.endsWith(`_${op}`) || name.endsWith(`:${op}`) || name.endsWith(`/${op}`);
+}
+
+// ---- The contract: what the server serves at
+// GET /api/v1/telemetry/claude-code/hooks/contract, validated all or nothing.
+export const CONTRACT_VERSION = 1;
+const MAX_CONTRACT_BYTES = 256 * 1024;
+const MAX_CONTRACT_MUTATIONS = 1024, MAX_CONTRACT_KEYS = 512, MAX_CONTRACT_SOURCES = 32, MAX_CONTRACT_PATHS = 1024;
+const CONTRACT_KEYS = ["identityPaths", "mutations", "primaryIdentityKeys", "version"];
+const IDENTITY_PATH_KEYS = ["as", "operations", "path", "side", "source"];
+const IDENTITY_KEY_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$-]{0,63}$/;
+const SOURCE_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
+
 const isRecord = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
+const hasExactKeys = (value, keys) => isRecord(value) && Object.keys(value).sort().join(",") === keys.join(",");
+const stringList = (value, max, pattern) => Array.isArray(value) && value.length >= 1 && value.length <= max &&
+  value.every((item) => typeof item === "string" && pattern.test(item));
+
+/**
+ * A validated, ready-to-apply contract, or null. Any unknown key, wrong type,
+ * oversized list or path outside the server's grammar rejects the whole
+ * contract: it is never partially applied.
+ */
+export function parseConnectorContract(value) {
+  if (!hasExactKeys(value, CONTRACT_KEYS) || value.version !== CONTRACT_VERSION) return null;
+  if (!stringList(value.mutations, MAX_CONTRACT_MUTATIONS, OPERATION_PATTERN)) return null;
+  if (!stringList(value.primaryIdentityKeys, MAX_CONTRACT_KEYS, IDENTITY_KEY_PATTERN)) return null;
+  if (value.primaryIdentityKeys.some((key) => FORBIDDEN_KEYS.has(key))) return null;
+  if (!Array.isArray(value.identityPaths) || value.identityPaths.length > MAX_CONTRACT_PATHS) return null;
+  const modules = new Map();
+  for (const entry of value.identityPaths) {
+    if (!hasExactKeys(entry, IDENTITY_PATH_KEYS)) return null;
+    if (typeof entry.source !== "string" || !SOURCE_PATTERN.test(entry.source) || FORBIDDEN_KEYS.has(entry.source)) return null;
+    if (entry.side !== "input" && entry.side !== "result") return null;
+    const segments = parseIdentityPath(entry.path);
+    if (!segments) return null;
+    if (typeof entry.as !== "string" || !IDENTITY_AS_PATTERN.test(entry.as)) return null;
+    if (!stringList(entry.operations, MAX_IDENTITY_PATH_OPERATIONS, OPERATION_PATTERN)) return null;
+    const paths = modules.get(entry.source) ?? [];
+    if (paths.length >= MAX_IDENTITY_PATHS_PER_SOURCE) return null;
+    paths.push({ operations: [...entry.operations], side: entry.side, path: entry.path, as: entry.as, segments });
+    modules.set(entry.source, paths);
+  }
+  if (modules.size > MAX_CONTRACT_SOURCES) return null;
+  const primaryIdentityKeys = new Set(value.primaryIdentityKeys);
+  return {
+    version: CONTRACT_VERSION,
+    mutations: [...new Set(value.mutations)],
+    primaryIdentityKeys,
+    identityKeys: new Set([...primaryIdentityKeys, ...SPECIALIZED_IDENTITY_KEYS]),
+    // First appearance is the server's module order.
+    modules: [...modules].map(([id, identityPaths]) => ({ id, identityPaths })),
+  };
+}
+
+export const VENDORED_CONTRACT = parseConnectorContract({
+  version: CONTRACT_VERSION, mutations: MUTATIONS, primaryIdentityKeys: [...PRIMARY_IDENTITY_KEYS], identityPaths: [],
+});
+
+// ---- The projector.
 const isIdentityLiteral = (v) => /^https?:\/\/\S+$/i.test(v) || /^[A-Z][A-Z0-9]{1,15}-\d+$/.test(v) || /^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+#\d+(?:\/reviews\/\d+)?$/.test(v);
 
 function decodeStructured(value, state, depth = 0) {
@@ -128,7 +229,7 @@ function projectValue(value, allowActionRequests, state, depth) {
   if (!isRecord(decoded)) return null;
   const projected = {};
   for (const [key, nested] of Object.entries(decoded)) {
-    if (IDENTITY_KEYS.has(key)) { const scalar = boundedScalar(nested, state); if (scalar !== null) projected[key] = scalar; continue; }
+    if (state.identityKeys.has(key)) { const scalar = boundedScalar(nested, state); if (scalar !== null) projected[key] = scalar; continue; }
     if (allowActionRequests && key === "requests") { const requests = projectRequestActions(nested, state); if (requests) projected.requests = requests; continue; }
     if (!WRAPPER_KEYS.has(key)) continue;
     const wrapper = projectWrapper(nested, allowActionRequests, state, depth + 1);
@@ -146,11 +247,133 @@ function projectEnvelope(envelope, fields, allowActionRequests, state) {
   }
   return Object.keys(projected).length > 0 ? projected : null;
 }
-/** Same contract as the dashboard: { projection | null, omissionReason }. */
-export function projectMutationIdentity(input) {
-  const state = { malformed: false, tooLarge: false };
-  const projectedInput = projectEnvelope(input.inputProjection, INPUT_FIELDS, true, state);
-  const projectedResult = projectEnvelope(input.resultProjection, RESULT_FIELDS, false, state);
+
+// ---- identityPaths: operation-scoped paths into the raw input or result.
+function normalizedToolNames(value) {
+  const names = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+  return [...new Set(names.flatMap((name) => typeof name === "string" && name.trim() ? [name.trim()] : []))];
+}
+function withWorkSourceIdentity(projected, namespace) {
+  if (!namespace) return projected;
+  return { ...(projected ?? {}), [WORK_SOURCE_IDENTITY_KEY]: namespace };
+}
+const matchesOperation = (path, toolNames) => path.operations.some((operation) => toolNames.some((toolName) => toolNameMatchesOperation(toolName, operation)));
+/** The value shape is fixed by the declaration, never by what was observed. */
+const declaresArray = (module, side, as) => module.identityPaths.some((path) => path.side === side && path.as === as && path.segments.some((segment) => segment.array));
+
+function workSourceIdentity(envelope, fields, side, toolNames, modules, state) {
+  if (!envelope) return null;
+  const namespace = {};
+  if (toolNames.length > 0) {
+    for (const workSource of modules) {
+      const collected = new Map();
+      for (const path of workSource.identityPaths) {
+        if (path.side !== side || !matchesOperation(path, toolNames)) continue;
+        const values = collected.get(path.as) ?? [];
+        for (const field of fields) {
+          if (Object.hasOwn(envelope, field)) values.push(...identityPathValues(envelope[field], path.segments, state));
+        }
+        collected.set(path.as, values);
+      }
+      const kept = {};
+      for (const [as, values] of collected) {
+        const unique = [...new Set(values)];
+        if (unique.length === 0) continue;
+        if (unique.length > MAX_ARRAY_ITEMS) state.tooLarge = true;
+        if (declaresArray(workSource, side, as)) kept[as] = unique.slice(0, MAX_ARRAY_ITEMS);
+        // Two different values for a single-valued identity are ambiguous.
+        else if (unique.length === 1) kept[as] = unique[0];
+      }
+      if (Object.keys(kept).length > 0) namespace[workSource.id] = kept;
+    }
+  }
+  // A subtree already present is kept only if every part of it is valid.
+  const supplied = sanitizeWorkSourceIdentity(envelope[WORK_SOURCE_IDENTITY_KEY], side, toolNames, modules);
+  for (const [source, suppliedFields] of Object.entries(supplied ?? {})) {
+    namespace[source] = { ...suppliedFields, ...(namespace[source] ?? {}) };
+  }
+  return Object.keys(namespace).length > 0 ? namespace : null;
+}
+/** All or nothing, exactly as the server re-validates what the hook sends. */
+function sanitizeWorkSourceIdentity(value, side, toolNames, modules) {
+  if (!isRecord(value)) return null;
+  const sources = Object.entries(value);
+  if (sources.length === 0 || sources.length > modules.length) return null;
+  const sanitized = {};
+  for (const [source, fields] of sources) {
+    const workSource = modules.find((candidate) => candidate.id === source);
+    if (!workSource || !isRecord(fields)) return null;
+    const names = Object.entries(fields);
+    if (names.length === 0) return null;
+    const kept = {};
+    for (const [as, raw] of names) {
+      const declared = workSource.identityPaths.some((path) => path.side === side && path.as === as && (toolNames.length === 0 || matchesOperation(path, toolNames)));
+      if (!declared) return null;
+      const normalized = declaresArray(workSource, side, as) ? exactIdentityArray(raw) : exactIdentityScalar(raw);
+      if (normalized === null) return null;
+      kept[as] = normalized;
+    }
+    sanitized[workSource.id] = kept;
+  }
+  return sanitized;
+}
+function exactIdentityScalar(value) {
+  const normalized = identityPathValue(value);
+  return normalized !== null && normalized === value ? normalized : null;
+}
+function exactIdentityArray(value) {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_ARRAY_ITEMS) return null;
+  const items = value.map(exactIdentityScalar);
+  return items.every((item) => item !== null) ? items : null;
+}
+function identityPathValue(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string") return null;
+  const literal = value.trim();
+  if (!literal || literal.length > MAX_PATH_VALUE_CHARS) return null;
+  return isIdentityLiteral(literal) || OPAQUE_IDENTITY_TOKEN.test(literal) ? literal : null;
+}
+function identityPathValues(value, segments, state) {
+  // The walker already reports malformed JSON for these same fields.
+  const decoding = { malformed: false, tooLarge: false };
+  const values = identityPathRoots(value, decoding, 0).flatMap((root) => walkIdentityPath(root, segments, 0, state));
+  if (decoding.tooLarge) state.tooLarge = true;
+  return values;
+}
+/** The decoded value and the MCP transport envelopes inside it. */
+function identityPathRoots(value, state, depth) {
+  if (depth > MAX_WALK_DEPTH) return [];
+  const decoded = decodeStructured(value, state);
+  if (Array.isArray(decoded)) {
+    if (decoded.length > MAX_ARRAY_ITEMS) state.tooLarge = true;
+    return decoded.slice(0, MAX_ARRAY_ITEMS).flatMap((block) => isRecord(block) && block.type === "text" ? identityPathRoots(block.text, state, depth + 1) : []);
+  }
+  if (!isRecord(decoded)) return [];
+  return [decoded, ...IDENTITY_PATH_TRANSPORT_KEYS.flatMap((key) => Object.hasOwn(decoded, key) ? identityPathRoots(decoded[key], state, depth + 1) : [])];
+}
+function walkIdentityPath(node, segments, index, state) {
+  if (index === segments.length) { const value = identityPathValue(node); return value === null ? [] : [value]; }
+  const segment = segments[index];
+  if (!isRecord(node) || !Object.hasOwn(node, segment.key)) return [];
+  const child = node[segment.key];
+  if (!segment.array) return walkIdentityPath(child, segments, index + 1, state);
+  if (!Array.isArray(child)) return [];
+  if (child.length > MAX_ARRAY_ITEMS) state.tooLarge = true;
+  return child.slice(0, MAX_ARRAY_ITEMS).flatMap((item) => walkIdentityPath(item, segments, index + 1, state));
+}
+
+/** Same contract as the dashboard: { projection | null, omissionReason }.
+ * identityPaths apply only with a tool name, and only for the operations
+ * that declare them. */
+export function projectMutationIdentity(input, contract = VENDORED_CONTRACT) {
+  const state = { malformed: false, tooLarge: false, identityKeys: contract.identityKeys };
+  const toolNames = normalizedToolNames(input.toolName);
+  const projectedInput = withWorkSourceIdentity(
+    projectEnvelope(input.inputProjection, INPUT_FIELDS, true, state),
+    workSourceIdentity(input.inputProjection, INPUT_FIELDS, "input", toolNames, contract.modules, state));
+  const projectedResult = withWorkSourceIdentity(
+    projectEnvelope(input.resultProjection, RESULT_FIELDS, false, state),
+    workSourceIdentity(input.resultProjection, RESULT_FIELDS, "result", toolNames, contract.modules, state));
   const projection = projectedInput || projectedResult ? { version: 1, input: projectedInput, result: projectedResult } : null;
   if (projection) {
     try { if (new TextEncoder().encode(JSON.stringify(projection)).length > MAX_PROJECTION_BYTES) return { projection: null, omissionReason: "too_large" }; }
@@ -167,11 +390,14 @@ export function splitToolName(toolName) {
   if (at <= 0 || at + 2 >= rest.length) return null;
   return { serverName: rest.slice(0, at), operation: rest.slice(at + 2) };
 }
-export function isMutation(toolName) {
+function connectorTool(toolName) {
   const parts = splitToolName(toolName);
-  if (!parts || SABIA_SERVERS.test(parts.serverName)) return false;
-  const op = parts.operation.toLowerCase();
-  return MUTATIONS.some((name) => op === name || op.endsWith(`_${name}`) || op.endsWith(`:${name}`) || op.endsWith(`/${name}`));
+  return parts && !SABIA_SERVERS.test(parts.serverName) ? parts : null;
+}
+/** The dashboard's isClaudeCodeHookMutation, over the given contract. */
+export function isMutation(toolName, contract = VENDORED_CONTRACT) {
+  const parts = connectorTool(toolName);
+  return !!parts && contract.mutations.some((name) => toolNameMatchesOperation(parts.operation, name));
 }
 // Claude Code hands an MCP tool's result to hooks as its content block list, so
 // an error can sit inside a text block or a structured wrapper. Walks the same
@@ -188,17 +414,21 @@ function errorShaped(response, depth = 0) {
   if (response.isError === true || response.is_error === true || (response.error !== undefined && response.error !== null && response.error !== false)) return true;
   return ["structuredContent", "structured_content", "result", "content"].some((key) => response[key] !== undefined && errorShaped(response[key], depth + 1));
 }
+/** Everything that can be judged before a contract is loaded. */
+function connectorCandidate(event) {
+  return event?.hook_event_name === "PostToolUse" && !!connectorTool(event.tool_name) &&
+    coordinate(event.tool_use_id) && coordinate(event.session_id) && !errorShaped(event.tool_response);
+}
 
 /** Host coordinates and the allowlisted identity only. transcript_path, cwd,
  * prompt_id and anything unlisted are never read. */
-export function connectorEnvelope(event, now = Date.now()) {
-  if (event?.hook_event_name !== "PostToolUse" || !isMutation(event.tool_name)) return null;
-  if (!coordinate(event.tool_use_id) || !coordinate(event.session_id)) return null;
-  if (errorShaped(event.tool_response)) return null;
+export function connectorEnvelope(event, now = Date.now(), contract = VENDORED_CONTRACT) {
+  if (!connectorCandidate(event) || !isMutation(event.tool_name, contract)) return null;
   const { projection } = projectMutationIdentity({
     inputProjection: event.tool_input === undefined ? null : { input: event.tool_input },
     resultProjection: event.tool_response === undefined ? null : { output: event.tool_response },
-  });
+    toolName: event.tool_name,
+  }, contract);
   if (!projection) return null;
   const envelope = {
     schema_version: SCHEMA_VERSION, hook_event_name: "PostToolUse", tool_name: event.tool_name, tool_use_id: event.tool_use_id,
@@ -206,6 +436,104 @@ export function connectorEnvelope(event, now = Date.now()) {
     identity: { input: projection.input, result: projection.result },
   };
   return Buffer.byteLength(JSON.stringify(envelope), "utf8") > MAX_ENVELOPE_BYTES ? null : envelope;
+}
+
+// ---- Contract fetch and cache.
+export const CONTRACT_TTL_MS = 24 * 60 * 60 * 1000;
+/** After a failed refresh, wait this long before trying again, so an offline
+ * machine does not spend a fetch timeout on every connector call. */
+export const CONTRACT_RETRY_MS = 15 * 60 * 1000;
+export const CONTRACT_TIMEOUT_MS = 1500;
+const CACHE_FORMAT = 1;
+const MAX_CACHE_BYTES = MAX_CONTRACT_BYTES + 4096;
+
+export function contractCachePath(claudeHome) {
+  return process.env.CLAUDE_PLUGIN_DATA
+    ? join(process.env.CLAUDE_PLUGIN_DATA, "connector-hook-contract.json")
+    : join(claudeHome, "sabia-connector-hook-contract.json");
+}
+
+/** The cache holds the last good contract and when it was fetched and last
+ * checked — never the ingestion key — for one Sabia origin. */
+async function readContractCache(path, origin) {
+  try {
+    const text = await readFile(path, "utf8");
+    if (text.length > MAX_CACHE_BYTES) return null;
+    const cache = JSON.parse(text);
+    if (!isRecord(cache) || cache.format !== CACHE_FORMAT || cache.origin !== origin) return null;
+    const contract = cache.contract === null ? null : parseConnectorContract(cache.contract);
+    return {
+      raw: contract ? cache.contract : null, contract,
+      fetchedAt: contract && Number.isFinite(cache.fetchedAt) ? cache.fetchedAt : null,
+      checkedAt: Number.isFinite(cache.checkedAt) ? cache.checkedAt : null,
+    };
+  } catch { return null; }
+}
+async function writeContractCache(path, record) {
+  try {
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+    await writeFile(temporary, JSON.stringify({ format: CACHE_FORMAT, ...record }), { mode: 0o600 });
+    await rename(temporary, path).catch(async (error) => { await unlink(temporary).catch(() => {}); throw error; });
+  } catch { /* A cache that cannot be written only means another fetch later. */ }
+}
+async function boundedText(response, maxBytes) {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!response.body) return "";
+  const reader = response.body.getReader(), chunks = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > maxBytes) { await reader.cancel().catch(() => {}); return null; }
+    chunks.push(Buffer.from(value));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+/** One bounded GET: the raw contract when it validates, otherwise null. The
+ * deadline covers the whole exchange, body included. */
+async function fetchContract(url, token, fetchImpl, timeoutMs) {
+  const controller = new AbortController();
+  let timer;
+  const deadline = new Promise((resolve) => { timer = setTimeout(() => { controller.abort(); resolve(null); }, timeoutMs); });
+  const attempt = (async () => {
+    const response = await fetchImpl(url, {
+      method: "GET", redirect: "manual", signal: controller.signal,
+      headers: { accept: "application/json", authorization: `Bearer ${token}` },
+    });
+    if (response.status !== 200) { await response.body?.cancel().catch(() => {}); return null; }
+    const text = await boundedText(response, MAX_CONTRACT_BYTES);
+    if (text === null) return null;
+    const raw = JSON.parse(text);
+    return parseConnectorContract(raw) ? raw : null;
+  })().catch(() => null);
+  try { return await Promise.race([attempt, deadline]); } finally { clearTimeout(timer); }
+}
+
+/**
+ * The contract to apply and where it came from: a fresh cache, else a newly
+ * fetched contract, else the last good cache however old, else the vendored
+ * v1 contract. Never throws, and never waits longer than the fetch timeout.
+ */
+export async function loadConnectorContract(context, options = {}) {
+  const now = options.now ?? Date.now();
+  const origin = new URL(context.endpoint).origin;
+  const path = options.contractPath ?? contractCachePath(options.claudeHome ?? join(homedir(), ".claude"));
+  const cache = await readContractCache(path, origin);
+  const age = (at) => (at === null || at > now ? Infinity : now - at);
+  if (cache?.contract && age(cache.fetchedAt) < CONTRACT_TTL_MS) return { contract: cache.contract, source: "cache" };
+  const fallback = cache?.contract ? { contract: cache.contract, source: "stale_cache" } : { contract: VENDORED_CONTRACT, source: "vendored" };
+  if (cache && age(cache.checkedAt) < CONTRACT_RETRY_MS) return fallback;
+  const raw = await fetchContract(new URL("/api/v1/telemetry/claude-code/hooks/contract", context.endpoint).href, context.token,
+    options.fetch ?? fetch, options.contractTimeoutMs ?? CONTRACT_TIMEOUT_MS);
+  if (raw) {
+    await writeContractCache(path, { origin, fetchedAt: now, checkedAt: now, contract: raw });
+    return { contract: parseConnectorContract(raw), source: "fetched" };
+  }
+  await writeContractCache(path, { origin, fetchedAt: cache?.fetchedAt ?? null, checkedAt: now, contract: cache?.raw ?? null });
+  return fallback;
 }
 
 /** The tool-output grant is what the server checks; read it from the managed
@@ -219,11 +547,13 @@ async function traceCaptureGranted(claudeHome) {
 
 export async function runConnectorHook(event, options = {}) {
   const claudeHome = options.claudeHome ?? process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
-  const envelope = connectorEnvelope(event, options.now);
-  if (!envelope) return { sent: false, reason: "not_a_mutation" };
+  if (!connectorCandidate(event)) return { sent: false, reason: "not_a_mutation" };
   if (!await traceCaptureGranted(claudeHome)) return { sent: false, reason: "no_trace_grant" };
   const context = await deviceContext(claudeHome).catch(() => null);
   if (!context) return { sent: false, reason: "no_credential" };
+  const { contract } = await loadConnectorContract(context, { ...options, claudeHome });
+  const envelope = connectorEnvelope(event, options.now, contract);
+  if (!envelope) return { sent: false, reason: "not_a_mutation" };
   const endpoint = new URL("/api/v1/telemetry/claude-code/hooks", context.endpoint).href;
   const body = JSON.stringify(envelope);
   const deadline = Date.now() + TOTAL_BUDGET_MS;
