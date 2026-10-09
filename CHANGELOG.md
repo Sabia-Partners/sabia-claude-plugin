@@ -2,6 +2,8 @@
 
 ## 0.4.0 (unreleased)
 
+- Tool output disclosure: Claude Code 2.1.283 exports the results of connector (MCP) tools, WebFetch and WebSearch under `OTEL_LOG_TOOL_CONTENT`, which the tool-output grant sets. The `connect --tool-output` notice, README and `connect-sabia` skill now say so instead of promising connector replies are never sent (dashboard-langfuse#330).
+
 - Rename the reporting feature to Output Reporting and clarify completed actions on durable Artifacts. Tool names, installed identity, OAuth grants and reporting behavior stay compatible (dashboard-langfuse#182).
 
 - **Sabia for Claude Desktop** (`desktop-extension/`, released as `sabia.mcpb`): a Desktop Extension that shares Cowork usage on any Claude plan with no terminal. Claude Desktop runs it on the host; on first start it opens Sabia's approval page once, then syncs at start-up and every ten minutes while Claude is open. Tools: `sabia_status`, `sabia_connect`, `sabia_sync_now`. Content sharing is an install-time toggle and still needs approval in Sabia. It shares state with `connect --local`, so a device never holds two keys. The release workflow attaches `sabia.mcpb` so Sabia can link to `releases/latest/download/sabia.mcpb`.

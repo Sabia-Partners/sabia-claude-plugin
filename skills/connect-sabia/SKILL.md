@@ -40,7 +40,9 @@ exporter and returns the connection to token counts only.
 requests and issues created with `gh` — on Sabia's Output page. Before running
 it, tell the user plainly that Claude Code will export tool result bodies and
 the command lines that produced them (command output can include file contents
-when a command echoes them), that Sabia keeps a reduced per-tool extract and
+when a command echoes them), that from Claude Code 2.1.283 this includes the
+results of connector (MCP) tools, WebFetch and WebSearch (document text, email
+bodies and web pages a tool returned), that Sabia keeps a reduced per-tool extract and
 drops file-tool bodies, and that every member of the organization can read
 what is kept. Prompt text and assistant responses are not exported by this
 flag. Confirm before running.
@@ -52,8 +54,9 @@ independent and can be combined.
 Two expectations to set: only work done in **new** sessions after connecting
 can appear, and identification depends on where the artifact's identity shows
 up in what Claude Code exports. Command output is exported, so a PR or issue
-created at the command line is identifiable from its stdout. MCP tool *create*
-results are not exported by the client, so the plugin's `PostToolUse` hook
+created at the command line is identifiable from its stdout. Before Claude
+Code 2.1.283 MCP tool *create* results are not exported by the client, so the
+plugin's `PostToolUse` hook
 (`scripts/sabia-connector-hook.mjs`) sends the identifiers from the reply of a
 successful Drive or GitHub connector mutation — file or pull request ids, names
 and links, nothing else — under this same grant; a Doc created through the
