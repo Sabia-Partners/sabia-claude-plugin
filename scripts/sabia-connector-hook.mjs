@@ -9,8 +9,10 @@
 // Which operations count and which identifiers survive is Sabia's connector
 // hook contract. The hook fetches it from the connected Sabia, caches it, and
 // falls back to the last good copy and then to the vendored v1 contract.
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { constants as fsConstants } from "node:fs";
+import { lstat, mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -61,11 +63,13 @@ const INPUT_FIELDS = ["input", "tool.input", "tool_input", "arguments", "tool.ar
 const RESULT_FIELDS = ["output", "tool.output", "tool_output", "body", "tool.result"];
 const MAX_PROJECTION_BYTES = 32 * 1024, MAX_SCALAR_CHARS = 4096, MAX_PARSE_DEPTH = 6, MAX_WALK_DEPTH = 8, MAX_ARRAY_ITEMS = 128;
 
-/** Reserved key on a projected side: { "<source>": { "<as>": scalar | scalar[] } }. */
+/** Reserved key on a projected side: { "<source>": { "<as>": id | id[] | boolean } }. */
 export const WORK_SOURCE_IDENTITY_KEY = "work_source_identity";
 const MAX_PATH_VALUE_CHARS = 2048;
 /** Provider ids and keys: no whitespace, so no names, titles or prose. */
 const OPAQUE_IDENTITY_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@#/+=~-]{0,255}$/;
+/** An email address is personal data, never an id-path identity. */
+const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 /** MCP transport envelopes an identity path may sit inside. */
 const IDENTITY_PATH_TRANSPORT_KEYS = ["structuredContent", "structured_content", "content", "result"];
 
@@ -105,7 +109,8 @@ export const CONTRACT_VERSION = 1;
 const MAX_CONTRACT_BYTES = 256 * 1024;
 const MAX_CONTRACT_MUTATIONS = 1024, MAX_CONTRACT_KEYS = 512, MAX_CONTRACT_SOURCES = 32, MAX_CONTRACT_PATHS = 1024;
 const CONTRACT_KEYS = ["identityPaths", "mutations", "primaryIdentityKeys", "version"];
-const IDENTITY_PATH_KEYS = ["as", "operations", "path", "side", "source"];
+/** Exactly what the server serves: `kind` is always emitted, "id" or "flag". */
+const IDENTITY_PATH_KEYS = ["as", "kind", "operations", "path", "side", "source"];
 const IDENTITY_KEY_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$-]{0,63}$/;
 const SOURCE_PATTERN = /^[a-z][a-z0-9_-]{0,63}$/;
 
@@ -121,11 +126,12 @@ const stringList = (value, max, pattern) => Array.isArray(value) && value.length
  */
 export function parseConnectorContract(value) {
   if (!hasExactKeys(value, CONTRACT_KEYS) || value.version !== CONTRACT_VERSION) return null;
+  try { if (Buffer.byteLength(JSON.stringify(value), "utf8") > MAX_CONTRACT_BYTES) return null; } catch { return null; }
   if (!stringList(value.mutations, MAX_CONTRACT_MUTATIONS, OPERATION_PATTERN)) return null;
   if (!stringList(value.primaryIdentityKeys, MAX_CONTRACT_KEYS, IDENTITY_KEY_PATTERN)) return null;
   if (value.primaryIdentityKeys.some((key) => FORBIDDEN_KEYS.has(key))) return null;
   if (!Array.isArray(value.identityPaths) || value.identityPaths.length > MAX_CONTRACT_PATHS) return null;
-  const modules = new Map();
+  const modules = new Map(), kinds = new Map();
   for (const entry of value.identityPaths) {
     if (!hasExactKeys(entry, IDENTITY_PATH_KEYS)) return null;
     if (typeof entry.source !== "string" || !SOURCE_PATTERN.test(entry.source) || FORBIDDEN_KEYS.has(entry.source)) return null;
@@ -133,10 +139,17 @@ export function parseConnectorContract(value) {
     const segments = parseIdentityPath(entry.path);
     if (!segments) return null;
     if (typeof entry.as !== "string" || !IDENTITY_AS_PATTERN.test(entry.as)) return null;
+    if (entry.kind !== "id" && entry.kind !== "flag") return null;
+    // A flag is one boolean: never from an array.
+    if (entry.kind === "flag" && segments.some((segment) => segment.array)) return null;
+    // One `as` is one value shape: a source cannot declare it both as an id and as a flag.
+    const kindKey = `${entry.source}\u0000${entry.as}`;
+    if ((kinds.get(kindKey) ?? entry.kind) !== entry.kind) return null;
+    kinds.set(kindKey, entry.kind);
     if (!stringList(entry.operations, MAX_IDENTITY_PATH_OPERATIONS, OPERATION_PATTERN)) return null;
     const paths = modules.get(entry.source) ?? [];
     if (paths.length >= MAX_IDENTITY_PATHS_PER_SOURCE) return null;
-    paths.push({ operations: [...entry.operations], side: entry.side, path: entry.path, as: entry.as, segments });
+    paths.push({ operations: [...entry.operations], side: entry.side, path: entry.path, as: entry.as, kind: entry.kind, segments });
     modules.set(entry.source, paths);
   }
   if (modules.size > MAX_CONTRACT_SOURCES) return null;
@@ -257,48 +270,115 @@ function withWorkSourceIdentity(projected, namespace) {
   if (!namespace) return projected;
   return { ...(projected ?? {}), [WORK_SOURCE_IDENTITY_KEY]: namespace };
 }
-const matchesOperation = (path, toolNames) => path.operations.some((operation) => toolNames.some((toolName) => toolNameMatchesOperation(toolName, operation)));
-/** The value shape is fixed by the declaration, never by what was observed. */
-const declaresArray = (module, side, as) => module.identityPaths.some((path) => path.side === side && path.as === as && path.segments.some((segment) => segment.array));
+const normalizedOperation = (operation) => operation.trim().toLowerCase();
+
+/**
+ * The dashboard's winningIdentityPathOperations: which module owns a called
+ * tool, and through which operation. For each tool name, every identityPaths
+ * operation of every module (either side) that matches it competes: exact
+ * equality (case-insensitive) beats any suffix match, the longest suffix wins,
+ * and when more than one module declares the winning operation none of them
+ * owns the call. Several tool names are judged alone and combined.
+ * Returns, per module id, the winning operations (lower-cased) it owns.
+ */
+export function winningIdentityPathOperations(toolNames, modules) {
+  const winners = new Map();
+  for (const toolName of toolNames) {
+    const called = normalizedOperation(toolName);
+    let best = null, owners = new Set();
+    for (const workSource of modules) {
+      for (const path of workSource.identityPaths) {
+        for (const operation of path.operations) {
+          if (!toolNameMatchesOperation(toolName, operation)) continue;
+          const normalized = normalizedOperation(operation);
+          const rank = normalized === called ? Number.POSITIVE_INFINITY : normalized.length;
+          if (!best || rank > best.rank) {
+            best = { operation: normalized, rank };
+            owners = new Set([workSource.id]);
+          } else if (rank === best.rank) {
+            owners.add(workSource.id);
+            if (normalized !== best.operation) owners.add("\u0000tie");
+          }
+        }
+      }
+    }
+    if (!best || owners.size !== 1) continue;
+    const [owner] = owners;
+    const operations = winners.get(owner) ?? new Set();
+    operations.add(best.operation);
+    winners.set(owner, operations);
+  }
+  return winners;
+}
+/** A path applies only if its module won the call through an operation it lists. */
+function pathApplies(workSource, path, winners) {
+  const owned = winners.get(workSource.id);
+  return owned !== undefined && path.operations.some((operation) => owned.has(normalizedOperation(operation)));
+}
+/** The value shape is fixed by the declaration, never by what was observed:
+ * "flag", "id_array" (a path for that `as` and side has `[]`) or "id"; null
+ * when undeclared or when the declarations disagree on the kind. */
+function declaredShape(module, side, as) {
+  const paths = module.identityPaths.filter((path) => path.side === side && path.as === as);
+  if (paths.length === 0) return null;
+  const kinds = new Set(paths.map((path) => path.kind));
+  if (kinds.size !== 1) return null;
+  if (kinds.has("flag")) return "flag";
+  return paths.some((path) => path.segments.some((segment) => segment.array)) ? "id_array" : "id";
+}
 
 function workSourceIdentity(envelope, fields, side, toolNames, modules, state) {
   if (!envelope) return null;
   const namespace = {};
-  if (toolNames.length > 0) {
-    for (const workSource of modules) {
-      const collected = new Map();
-      for (const path of workSource.identityPaths) {
-        if (path.side !== side || !matchesOperation(path, toolNames)) continue;
-        const values = collected.get(path.as) ?? [];
-        for (const field of fields) {
-          if (Object.hasOwn(envelope, field)) values.push(...identityPathValues(envelope[field], path.segments, state));
-        }
-        collected.set(path.as, values);
+  const winners = winningIdentityPathOperations(toolNames, modules);
+  // Names found ambiguous here: a supplied value for one of them is dropped too.
+  const ambiguous = new Map();
+  for (const workSource of modules) {
+    if (!winners.has(workSource.id)) continue;
+    const collected = new Map();
+    for (const path of workSource.identityPaths) {
+      if (path.side !== side || !pathApplies(workSource, path, winners)) continue;
+      const values = collected.get(path.as) ?? [];
+      for (const field of fields) {
+        if (Object.hasOwn(envelope, field)) values.push(...identityPathValues(envelope[field], path.segments, path.kind, state));
       }
-      const kept = {};
-      for (const [as, values] of collected) {
-        const unique = [...new Set(values)];
-        if (unique.length === 0) continue;
-        if (unique.length > MAX_ARRAY_ITEMS) state.tooLarge = true;
-        if (declaresArray(workSource, side, as)) kept[as] = unique.slice(0, MAX_ARRAY_ITEMS);
-        // Two different values for a single-valued identity are ambiguous.
-        else if (unique.length === 1) kept[as] = unique[0];
-      }
-      if (Object.keys(kept).length > 0) namespace[workSource.id] = kept;
+      collected.set(path.as, values);
     }
+    const kept = {};
+    for (const [as, values] of collected) {
+      const unique = [...new Set(values)];
+      if (unique.length === 0) continue;
+      const shape = declaredShape(workSource, side, as);
+      if (shape === "id_array") {
+        if (unique.length > MAX_ARRAY_ITEMS) state.tooLarge = true;
+        kept[as] = unique.slice(0, MAX_ARRAY_ITEMS);
+      } else if (shape !== null && unique.length === 1) {
+        kept[as] = unique[0];
+      } else {
+        // Two different values for a single-valued identity or flag are ambiguous: keep neither.
+        const names = ambiguous.get(workSource.id) ?? new Set();
+        names.add(as);
+        ambiguous.set(workSource.id, names);
+      }
+    }
+    if (Object.keys(kept).length > 0) namespace[workSource.id] = kept;
   }
   // A subtree already present is kept only if every part of it is valid.
   const supplied = sanitizeWorkSourceIdentity(envelope[WORK_SOURCE_IDENTITY_KEY], side, toolNames, modules);
   for (const [source, suppliedFields] of Object.entries(supplied ?? {})) {
-    namespace[source] = { ...suppliedFields, ...(namespace[source] ?? {}) };
+    const merged = { ...suppliedFields, ...(namespace[source] ?? {}) };
+    for (const as of ambiguous.get(source) ?? []) delete merged[as];
+    if (Object.keys(merged).length > 0) namespace[source] = merged;
   }
   return Object.keys(namespace).length > 0 ? namespace : null;
 }
-/** All or nothing, exactly as the server re-validates what the hook sends. */
+/** All or nothing, exactly as the server re-validates what the hook sends:
+ * with a tool name, every name must belong to an operation its module wins. */
 function sanitizeWorkSourceIdentity(value, side, toolNames, modules) {
   if (!isRecord(value)) return null;
   const sources = Object.entries(value);
   if (sources.length === 0 || sources.length > modules.length) return null;
+  const winners = toolNames.length > 0 ? winningIdentityPathOperations(toolNames, modules) : null;
   const sanitized = {};
   for (const [source, fields] of sources) {
     const workSource = modules.find((candidate) => candidate.id === source);
@@ -307,9 +387,12 @@ function sanitizeWorkSourceIdentity(value, side, toolNames, modules) {
     if (names.length === 0) return null;
     const kept = {};
     for (const [as, raw] of names) {
-      const declared = workSource.identityPaths.some((path) => path.side === side && path.as === as && (toolNames.length === 0 || matchesOperation(path, toolNames)));
+      const declared = workSource.identityPaths.some((path) => path.side === side && path.as === as && (winners === null || pathApplies(workSource, path, winners)));
       if (!declared) return null;
-      const normalized = declaresArray(workSource, side, as) ? exactIdentityArray(raw) : exactIdentityScalar(raw);
+      const shape = declaredShape(workSource, side, as);
+      const normalized = shape === "flag" ? (typeof raw === "boolean" ? raw : null)
+        : shape === "id_array" ? exactIdentityArray(raw)
+          : shape === "id" ? exactIdentityScalar(raw) : null;
       if (normalized === null) return null;
       kept[as] = normalized;
     }
@@ -326,21 +409,32 @@ function exactIdentityArray(value) {
   const items = value.map(exactIdentityScalar);
   return items.every((item) => item !== null) ? items : null;
 }
+/** A bounded identity literal for an `id` path; never an email address. */
 function identityPathValue(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
   const literal = value.trim();
   if (!literal || literal.length > MAX_PATH_VALUE_CHARS) return null;
+  if (EMAIL_SHAPED.test(literal)) return null;
   return isIdentityLiteral(literal) || OPAQUE_IDENTITY_TOKEN.test(literal) ? literal : null;
 }
-function identityPathValues(value, segments, state) {
+/** A boolean for a `flag` path; the exact strings "true"/"false" are normalized. */
+function identityFlagValue(value) {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
+}
+function identityPathValues(value, segments, kind, state) {
   // The walker already reports malformed JSON for these same fields.
   const decoding = { malformed: false, tooLarge: false };
-  const values = identityPathRoots(value, decoding, 0).flatMap((root) => walkIdentityPath(root, segments, 0, state));
+  const values = identityPathRoots(value, decoding, 0).flatMap((root) => walkIdentityPath(root, segments, 0, kind, state));
   if (decoding.tooLarge) state.tooLarge = true;
   return values;
 }
-/** The decoded value and the MCP transport envelopes inside it. */
+/** The decoded value and the MCP transport envelopes inside it. A JSON-RPC
+ * message (any record with a `jsonrpc` key) is never a root itself: its `id`
+ * is a request counter, so only its `result` is descended. */
 function identityPathRoots(value, state, depth) {
   if (depth > MAX_WALK_DEPTH) return [];
   const decoded = decodeStructured(value, state);
@@ -349,22 +443,27 @@ function identityPathRoots(value, state, depth) {
     return decoded.slice(0, MAX_ARRAY_ITEMS).flatMap((block) => isRecord(block) && block.type === "text" ? identityPathRoots(block.text, state, depth + 1) : []);
   }
   if (!isRecord(decoded)) return [];
+  if (Object.hasOwn(decoded, "jsonrpc")) return Object.hasOwn(decoded, "result") ? identityPathRoots(decoded.result, state, depth + 1) : [];
   return [decoded, ...IDENTITY_PATH_TRANSPORT_KEYS.flatMap((key) => Object.hasOwn(decoded, key) ? identityPathRoots(decoded[key], state, depth + 1) : [])];
 }
-function walkIdentityPath(node, segments, index, state) {
-  if (index === segments.length) { const value = identityPathValue(node); return value === null ? [] : [value]; }
+function walkIdentityPath(node, segments, index, kind, state) {
+  if (index === segments.length) {
+    const value = kind === "flag" ? identityFlagValue(node) : identityPathValue(node);
+    return value === null ? [] : [value];
+  }
   const segment = segments[index];
   if (!isRecord(node) || !Object.hasOwn(node, segment.key)) return [];
   const child = node[segment.key];
-  if (!segment.array) return walkIdentityPath(child, segments, index + 1, state);
-  if (!Array.isArray(child)) return [];
+  if (!segment.array) return walkIdentityPath(child, segments, index + 1, kind, state);
+  // A flag never comes from an array (the contract rejects `[]` in flag paths).
+  if (kind === "flag" || !Array.isArray(child)) return [];
   if (child.length > MAX_ARRAY_ITEMS) state.tooLarge = true;
-  return child.slice(0, MAX_ARRAY_ITEMS).flatMap((item) => walkIdentityPath(item, segments, index + 1, state));
+  return child.slice(0, MAX_ARRAY_ITEMS).flatMap((item) => walkIdentityPath(item, segments, index + 1, kind, state));
 }
 
 /** Same contract as the dashboard: { projection | null, omissionReason }.
- * identityPaths apply only with a tool name, and only for the operations
- * that declare them. */
+ * identityPaths apply only with a tool name, and only for the module that
+ * wins the call under the specificity rule, through the operation it won. */
 export function projectMutationIdentity(input, contract = VENDORED_CONTRACT) {
   const state = { malformed: false, tooLarge: false, identityKeys: contract.identityKeys };
   const toolNames = normalizedToolNames(input.toolName);
@@ -453,29 +552,97 @@ export function contractCachePath(claudeHome) {
     : join(claudeHome, "sabia-connector-hook-contract.json");
 }
 
-/** The cache holds the last good contract and when it was fetched and last
- * checked — never the ingestion key — for one Sabia origin. */
-async function readContractCache(path, origin) {
+/** A small regular file, read without following a symlink and only after its
+ * size is known to be within bounds; null for anything else. */
+async function readRegularFile(path, maxBytes, { ownedByProcessUser = false } = {}) {
+  let handle;
   try {
-    const text = await readFile(path, "utf8");
-    if (text.length > MAX_CACHE_BYTES) return null;
+    const link = await lstat(path);
+    if (!link.isFile() || link.size > maxBytes) return null;
+    // O_NONBLOCK: a FIFO swapped in after the lstat cannot hang the hook.
+    handle = await open(path, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0) | (fsConstants.O_NONBLOCK ?? 0));
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > maxBytes || info.dev !== link.dev || info.ino !== link.ino) return null;
+    if (ownedByProcessUser && typeof process.getuid === "function" && info.uid !== process.getuid()) return null;
+    const buffer = Buffer.alloc(maxBytes + 1);
+    let size = 0;
+    for (;;) {
+      const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size);
+      if (bytesRead === 0) break;
+      size += bytesRead;
+      if (size > maxBytes) return null;
+    }
+    return buffer.subarray(0, size).toString("utf8");
+  } catch { return null; } finally { await handle?.close().catch(() => {}); }
+}
+/** Write-then-rename through a fresh temporary file that must not exist yet. */
+async function writePrivateFile(path, text) {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = `${path}.${process.pid}.${randomBytes(6).toString("hex")}.tmp`;
+  await writeFile(temporary, text, { mode: 0o600, flag: "wx" });
+  await rename(temporary, path).catch(async (error) => { await unlink(temporary).catch(() => {}); throw error; });
+}
+
+/**
+ * Binds a cached contract to the Sabia origin and the ingestion key it was
+ * fetched with. The key itself is never written; a contract edited on disk
+ * no longer matches.
+ */
+function contractProof(token, origin, raw) {
+  return createHmac("sha256", token).update(`sabia-connector-hook-contract\n${origin}\n${JSON.stringify(raw)}`).digest("hex");
+}
+function proofMatches(proof, expected) {
+  return typeof proof === "string" && proof.length === expected.length && timingSafeEqual(Buffer.from(proof), Buffer.from(expected));
+}
+/** Grants nothing the vendored v1 contract does not: no wider key allowlist, no identity paths. */
+function withinVendored(contract) {
+  return contract.modules.length === 0 && [...contract.primaryIdentityKeys].every((key) => VENDORED_CONTRACT.primaryIdentityKeys.has(key));
+}
+
+/** The cache holds the last good contract, an HMAC proof that it is what
+ * Sabia served for this key, and when it was fetched and last checked — never
+ * the ingestion key — for one Sabia origin. A cached contract wider than the
+ * vendored v1 contract is applied only with a valid proof. */
+async function readContractCache(path, origin, token) {
+  const text = await readRegularFile(path, MAX_CACHE_BYTES);
+  if (text === null) return null;
+  try {
     const cache = JSON.parse(text);
     if (!isRecord(cache) || cache.format !== CACHE_FORMAT || cache.origin !== origin) return null;
-    const contract = cache.contract === null ? null : parseConnectorContract(cache.contract);
+    let contract = cache.contract === null ? null : parseConnectorContract(cache.contract);
+    const proven = contract !== null && proofMatches(cache.proof, contractProof(token, origin, cache.contract));
+    if (contract && !proven && !withinVendored(contract)) contract = null;
     return {
-      raw: contract ? cache.contract : null, contract,
+      raw: contract ? cache.contract : null, proof: contract && proven ? cache.proof : null, contract,
       fetchedAt: contract && Number.isFinite(cache.fetchedAt) ? cache.fetchedAt : null,
       checkedAt: Number.isFinite(cache.checkedAt) ? cache.checkedAt : null,
     };
   } catch { return null; }
 }
+/** True when the cache now holds the record. */
 async function writeContractCache(path, record) {
+  try { await writePrivateFile(path, JSON.stringify({ format: CACHE_FORMAT, ...record })); return true; }
+  catch { return false; }
+}
+
+/**
+ * Where the retry pause is remembered when the cache itself cannot be
+ * written: a per-user, per-cache marker in the temporary directory holding
+ * only when Sabia was last tried. It can postpone a fetch by at most
+ * CONTRACT_RETRY_MS and never supplies a contract.
+ */
+export function retryMarkerPath(cachePath, origin) {
+  const user = typeof process.getuid === "function" ? process.getuid() : "user";
+  const key = createHash("sha256").update(`${origin}\n${cachePath}`).digest("hex").slice(0, 24);
+  return join(tmpdir(), `sabia-connector-hook-${user}-${key}.json`);
+}
+async function readRetryMarker(path, origin) {
+  const text = await readRegularFile(path, 1024, { ownedByProcessUser: true });
+  if (text === null) return null;
   try {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(temporary, JSON.stringify({ format: CACHE_FORMAT, ...record }), { mode: 0o600 });
-    await rename(temporary, path).catch(async (error) => { await unlink(temporary).catch(() => {}); throw error; });
-  } catch { /* A cache that cannot be written only means another fetch later. */ }
+    const marker = JSON.parse(text);
+    return isRecord(marker) && marker.format === CACHE_FORMAT && marker.origin === origin && Number.isFinite(marker.checkedAt) ? marker.checkedAt : null;
+  } catch { return null; }
 }
 async function boundedText(response, maxBytes) {
   const declared = Number(response.headers.get("content-length"));
@@ -521,18 +688,21 @@ export async function loadConnectorContract(context, options = {}) {
   const now = options.now ?? Date.now();
   const origin = new URL(context.endpoint).origin;
   const path = options.contractPath ?? contractCachePath(options.claudeHome ?? join(homedir(), ".claude"));
-  const cache = await readContractCache(path, origin);
+  const markerPath = retryMarkerPath(path, origin);
+  const cache = await readContractCache(path, origin, context.token);
   const age = (at) => (at === null || at > now ? Infinity : now - at);
   if (cache?.contract && age(cache.fetchedAt) < CONTRACT_TTL_MS) return { contract: cache.contract, source: "cache" };
   const fallback = cache?.contract ? { contract: cache.contract, source: "stale_cache" } : { contract: VENDORED_CONTRACT, source: "vendored" };
   if (cache && age(cache.checkedAt) < CONTRACT_RETRY_MS) return fallback;
+  if (age(await readRetryMarker(markerPath, origin)) < CONTRACT_RETRY_MS) return fallback;
   const raw = await fetchContract(new URL("/api/v1/telemetry/claude-code/hooks/contract", context.endpoint).href, context.token,
     options.fetch ?? fetch, options.contractTimeoutMs ?? CONTRACT_TIMEOUT_MS);
   if (raw) {
-    await writeContractCache(path, { origin, fetchedAt: now, checkedAt: now, contract: raw });
+    await writeContractCache(path, { origin, fetchedAt: now, checkedAt: now, proof: contractProof(context.token, origin, raw), contract: raw });
     return { contract: parseConnectorContract(raw), source: "fetched" };
   }
-  await writeContractCache(path, { origin, fetchedAt: cache?.fetchedAt ?? null, checkedAt: now, contract: cache?.raw ?? null });
+  const cached = await writeContractCache(path, { origin, fetchedAt: cache?.fetchedAt ?? null, checkedAt: now, proof: cache?.proof ?? null, contract: cache?.raw ?? null });
+  if (!cached) await writePrivateFile(markerPath, JSON.stringify({ format: CACHE_FORMAT, origin, checkedAt: now })).catch(() => {});
   return fallback;
 }
 
@@ -551,16 +721,17 @@ export async function runConnectorHook(event, options = {}) {
   if (!await traceCaptureGranted(claudeHome)) return { sent: false, reason: "no_trace_grant" };
   const context = await deviceContext(claudeHome).catch(() => null);
   if (!context) return { sent: false, reason: "no_credential" };
+  // One budget for the whole exchange, the contract fetch included.
+  const deadline = Date.now() + (options.budgetMs ?? TOTAL_BUDGET_MS);
   const { contract } = await loadConnectorContract(context, { ...options, claudeHome });
   const envelope = connectorEnvelope(event, options.now, contract);
   if (!envelope) return { sent: false, reason: "not_a_mutation" };
   const endpoint = new URL("/api/v1/telemetry/claude-code/hooks", context.endpoint).href;
   const body = JSON.stringify(envelope);
-  const deadline = Date.now() + TOTAL_BUDGET_MS;
   const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   // No spool: a lost creation is lost, by design — a file that could hold
-  // the credential is the greater risk. Retries stay inside the hook's own
-  // timeout and give up silently.
+  // the credential is the greater risk. Retries stay inside the budget and
+  // give up silently; the first attempt is always made.
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
     if (attempt > 0) {
       const delay = RETRY_DELAYS_MS[attempt - 1];

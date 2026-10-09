@@ -152,6 +152,32 @@ the Cowork helper, the plugin manifest, the report-binding hook and the connecto
 hook. The shared report contract is pinned in [`contracts/v2`](contracts/v2/README.md);
 the connector hook's vendored contract and its identity-path parity cases, generated
 from the dashboard's own projector, are in [`contracts/connector-hook`](contracts/connector-hook).
+`identity-paths-v2.json` is a byte copy of the dashboard's
+`tests/fixtures/claude-code-identity-paths-v2.json`; when the dashboard regenerates
+it, copy it again rather than editing it here.
+
+### Changing the connector hook contract
+
+Clients cache the contract for 24 hours, and keep using the last good copy for as
+long as Sabia cannot be reached, so the server never knows which contract a hook
+is applying. Any change to `identityPaths` is therefore expand, deploy, contract,
+the same rule as a database migration:
+
+1. **Expand.** Add the new path, `as` name or operation beside the old one, and
+   have the module read both.
+2. **Deploy**, and wait at least one release (well past the 24-hour cache) so every
+   connected hook has fetched the expanded contract.
+3. **Contract.** Only then remove or rename the old declaration, or deactivate the
+   module that declared it.
+
+Never rename or remove an `as`, change its `kind`, or deactivate a module's paths
+in a single release: a hook still on the old contract would send names the server
+no longer declares, and the server rejects that whole subtree. The contract's own
+shape is pinned on both sides (the dashboard's
+`tests/unit/claude-code-identity-path-parity.test.ts` and this repository's
+`parseConnectorContract`); this hook rejects a contract with any key, kind or cap it
+does not know and falls back to its last good copy, so a new field needs a plugin
+release that accepts it before the server may serve it.
 
 To release, tag `vX.Y.Z`. The release workflow runs the checks and attaches
 `sabia-claude-plugin.tar.gz`. The installed identifier stays
