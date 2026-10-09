@@ -152,8 +152,8 @@ the Cowork helper, the plugin manifest, the report-binding hook and the connecto
 hook. The shared report contract is pinned in [`contracts/v2`](contracts/v2/README.md);
 the connector hook's vendored contract and its identity-path parity cases, generated
 from the dashboard's own projector, are in [`contracts/connector-hook`](contracts/connector-hook).
-`identity-paths-v2.json` is a byte copy of the dashboard's
-`tests/fixtures/claude-code-identity-paths-v2.json`; when the dashboard regenerates
+`identity-paths-v3.json` is a byte copy of the dashboard's
+`tests/fixtures/claude-code-identity-paths-v3.json`; when the dashboard regenerates
 it, copy it again rather than editing it here.
 
 ### Changing the connector hook contract

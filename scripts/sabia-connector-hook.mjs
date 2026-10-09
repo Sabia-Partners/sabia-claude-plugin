@@ -63,7 +63,9 @@ const INPUT_FIELDS = ["input", "tool.input", "tool_input", "arguments", "tool.ar
 const RESULT_FIELDS = ["output", "tool.output", "tool_output", "body", "tool.result"];
 const MAX_PROJECTION_BYTES = 32 * 1024, MAX_SCALAR_CHARS = 4096, MAX_PARSE_DEPTH = 6, MAX_WALK_DEPTH = 8, MAX_ARRAY_ITEMS = 128;
 
-/** Reserved key on a projected side: { "<source>": { "<as>": id | id[] | boolean } }. */
+/** Reserved key on a projected side: { "<source>": { "<as>": id | id[] | boolean | null } }.
+ * `null` appears only for a `flag` name and marks it ambiguous (the call
+ * returned both true and false); an absent flag has no key at all. */
 export const WORK_SOURCE_IDENTITY_KEY = "work_source_identity";
 const MAX_PATH_VALUE_CHARS = 2048;
 /** Provider ids and keys: no whitespace, so no names, titles or prose. */
@@ -354,8 +356,13 @@ function workSourceIdentity(envelope, fields, side, toolNames, modules, state) {
         kept[as] = unique.slice(0, MAX_ARRAY_ITEMS);
       } else if (shape !== null && unique.length === 1) {
         kept[as] = unique[0];
+      } else if (shape === "flag") {
+        // Both true and false: an explicit ambiguity marker, so "the call said
+        // both" stays distinct from "the call said nothing". It also overrides
+        // a supplied value for the name below.
+        kept[as] = null;
       } else {
-        // Two different values for a single-valued identity or flag are ambiguous: keep neither.
+        // Two different values for a single-valued identity are ambiguous: keep neither.
         const names = ambiguous.get(workSource.id) ?? new Set();
         names.add(as);
         ambiguous.set(workSource.id, names);
@@ -368,12 +375,17 @@ function workSourceIdentity(envelope, fields, side, toolNames, modules, state) {
   for (const [source, suppliedFields] of Object.entries(supplied ?? {})) {
     const merged = { ...suppliedFields, ...(namespace[source] ?? {}) };
     for (const as of ambiguous.get(source) ?? []) delete merged[as];
+    // Ambiguity is sticky either way: a supplied flag marker is not resolved
+    // by whatever single value this pass derives.
+    for (const [as, value] of Object.entries(suppliedFields)) if (value === null) merged[as] = null;
     if (Object.keys(merged).length > 0) namespace[source] = merged;
   }
   return Object.keys(namespace).length > 0 ? namespace : null;
 }
 /** All or nothing, exactly as the server re-validates what the hook sends:
- * with a tool name, every name must belong to an operation its module wins. */
+ * with a tool name, every name must belong to an operation its module wins.
+ * A flag is an exact boolean or `null` (the ambiguity marker); `null` is
+ * never accepted for an id or inside an id array. */
 function sanitizeWorkSourceIdentity(value, side, toolNames, modules) {
   if (!isRecord(value)) return null;
   const sources = Object.entries(value);
@@ -390,9 +402,13 @@ function sanitizeWorkSourceIdentity(value, side, toolNames, modules) {
       const declared = workSource.identityPaths.some((path) => path.side === side && path.as === as && (winners === null || pathApplies(workSource, path, winners)));
       if (!declared) return null;
       const shape = declaredShape(workSource, side, as);
-      const normalized = shape === "flag" ? (typeof raw === "boolean" ? raw : null)
-        : shape === "id_array" ? exactIdentityArray(raw)
-          : shape === "id" ? exactIdentityScalar(raw) : null;
+      if (shape === "flag") {
+        if (typeof raw !== "boolean" && raw !== null) return null;
+        kept[as] = raw;
+        continue;
+      }
+      const normalized = shape === "id_array" ? exactIdentityArray(raw)
+        : shape === "id" ? exactIdentityScalar(raw) : null;
       if (normalized === null) return null;
       kept[as] = normalized;
     }
@@ -594,42 +610,40 @@ function contractProof(token, origin, raw) {
 function proofMatches(proof, expected) {
   return typeof proof === "string" && proof.length === expected.length && timingSafeEqual(Buffer.from(proof), Buffer.from(expected));
 }
-/** Grants nothing the vendored v1 contract does not: no wider key allowlist, no identity paths. */
+/** Grants nothing the vendored v1 contract does not: no operation it does
+ * not list, no wider key allowlist, no identity paths. */
+const VENDORED_MUTATIONS = new Set(VENDORED_CONTRACT.mutations);
 function withinVendored(contract) {
-  return contract.modules.length === 0 && [...contract.primaryIdentityKeys].every((key) => VENDORED_CONTRACT.primaryIdentityKeys.has(key));
+  return contract.modules.length === 0 &&
+    contract.mutations.every((operation) => VENDORED_MUTATIONS.has(operation)) &&
+    [...contract.primaryIdentityKeys].every((key) => VENDORED_CONTRACT.primaryIdentityKeys.has(key));
 }
 
 /** The cache holds the last good contract, an HMAC proof that it is what
- * Sabia served for this key, and when it was fetched and last checked — never
- * the ingestion key — for one Sabia origin. A cached contract wider than the
- * vendored v1 contract is applied only with a valid proof. */
+ * Sabia served for this key, and when it was fetched — never the ingestion
+ * key — for one Sabia origin. Only a successful fetch writes it. A cached
+ * contract wider than the vendored v1 contract is applied only with a valid
+ * proof. */
 async function readContractCache(path, origin, token) {
   const text = await readRegularFile(path, MAX_CACHE_BYTES);
   if (text === null) return null;
   try {
     const cache = JSON.parse(text);
     if (!isRecord(cache) || cache.format !== CACHE_FORMAT || cache.origin !== origin) return null;
-    let contract = cache.contract === null ? null : parseConnectorContract(cache.contract);
-    const proven = contract !== null && proofMatches(cache.proof, contractProof(token, origin, cache.contract));
-    if (contract && !proven && !withinVendored(contract)) contract = null;
-    return {
-      raw: contract ? cache.contract : null, proof: contract && proven ? cache.proof : null, contract,
-      fetchedAt: contract && Number.isFinite(cache.fetchedAt) ? cache.fetchedAt : null,
-      checkedAt: Number.isFinite(cache.checkedAt) ? cache.checkedAt : null,
-    };
+    const contract = parseConnectorContract(cache.contract);
+    if (!contract) return null;
+    const proven = proofMatches(cache.proof, contractProof(token, origin, cache.contract));
+    if (!proven && !withinVendored(contract)) return null;
+    return { contract, fetchedAt: Number.isFinite(cache.fetchedAt) ? cache.fetchedAt : null };
   } catch { return null; }
-}
-/** True when the cache now holds the record. */
-async function writeContractCache(path, record) {
-  try { await writePrivateFile(path, JSON.stringify({ format: CACHE_FORMAT, ...record })); return true; }
-  catch { return false; }
 }
 
 /**
- * Where the retry pause is remembered when the cache itself cannot be
- * written: a per-user, per-cache marker in the temporary directory holding
- * only when Sabia was last tried. It can postpone a fetch by at most
- * CONTRACT_RETRY_MS and never supplies a contract.
+ * Where the retry pause after a failed refresh is remembered: a per-user,
+ * per-cache marker in the temporary directory holding only when Sabia was
+ * last tried. It is kept apart from the cache so a failed refresh never
+ * replaces a contract another hook process fetched meanwhile. It can postpone
+ * a fetch by at most CONTRACT_RETRY_MS and never supplies a contract.
  */
 export function retryMarkerPath(cachePath, origin) {
   const user = typeof process.getuid === "function" ? process.getuid() : "user";
@@ -693,16 +707,19 @@ export async function loadConnectorContract(context, options = {}) {
   const age = (at) => (at === null || at > now ? Infinity : now - at);
   if (cache?.contract && age(cache.fetchedAt) < CONTRACT_TTL_MS) return { contract: cache.contract, source: "cache" };
   const fallback = cache?.contract ? { contract: cache.contract, source: "stale_cache" } : { contract: VENDORED_CONTRACT, source: "vendored" };
-  if (cache && age(cache.checkedAt) < CONTRACT_RETRY_MS) return fallback;
   if (age(await readRetryMarker(markerPath, origin)) < CONTRACT_RETRY_MS) return fallback;
   const raw = await fetchContract(new URL("/api/v1/telemetry/claude-code/hooks/contract", context.endpoint).href, context.token,
     options.fetch ?? fetch, options.contractTimeoutMs ?? CONTRACT_TIMEOUT_MS);
   if (raw) {
-    await writeContractCache(path, { origin, fetchedAt: now, checkedAt: now, proof: contractProof(context.token, origin, raw), contract: raw });
+    await writePrivateFile(path, JSON.stringify({ format: CACHE_FORMAT, origin, fetchedAt: now, proof: contractProof(context.token, origin, raw), contract: raw })).catch(() => {});
     return { contract: parseConnectorContract(raw), source: "fetched" };
   }
-  const cached = await writeContractCache(path, { origin, fetchedAt: cache?.fetchedAt ?? null, checkedAt: now, proof: cache?.proof ?? null, contract: cache?.raw ?? null });
-  if (!cached) await writePrivateFile(markerPath, JSON.stringify({ format: CACHE_FORMAT, origin, checkedAt: now })).catch(() => {});
+  // A failed refresh never writes the cache: another hook process may have
+  // fetched a newer contract while this one waited, and that must survive.
+  // The pause goes in the marker, and a contract that landed meanwhile is used.
+  await writePrivateFile(markerPath, JSON.stringify({ format: CACHE_FORMAT, origin, checkedAt: now })).catch(() => {});
+  const latest = await readContractCache(path, origin, context.token);
+  if (latest?.contract && age(latest.fetchedAt) < CONTRACT_TTL_MS) return { contract: latest.contract, source: "cache" };
   return fallback;
 }
 
