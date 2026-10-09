@@ -58,7 +58,7 @@ and is recorded on the connection's key rather than on this machine.
 
 | Grant | Adds | Still never sent |
 | --- | --- | --- |
-| **Tool output** (`--tool-output`) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. Sabia keeps a reduced extract per tool and drops file-tool bodies. For a successful Google Drive or GitHub connector action that creates or changes something, a local hook also sends the identifiers from its reply: file or pull request ids, names and links. | Prompt text, assistant responses, raw API bodies, connector replies themselves. |
+| **Tool output** (`--tool-output`) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. Sabia keeps a reduced extract per tool and drops file-tool bodies. For a successful connector action that creates or changes something in a supported Work Source (Google Drive and GitHub, plus the sources Sabia lists in its connector hook contract), a local hook also sends the identifiers from its reply: file, pull request or record ids, keys, names and links. | Prompt text, assistant responses, raw API bodies, connector replies themselves. |
 | **Raw capture** (`--raw-capture`) | Prompt text and tool decisions from Claude Code's log export, retained as complete envelopes. Pre-production, for shaping Sabia's analysis from real data. | Assistant responses, raw API bodies. |
 
 Everyone in your Sabia organization can read what these grants capture.
@@ -100,7 +100,7 @@ flowchart LR
 | [`skills/connect-sabia`](skills/connect-sabia/SKILL.md) | Connects, checks, rotates and disconnects native usage. |
 | [`scripts/sabia.mjs`](scripts/sabia.mjs) | Writes and removes the managed OpenTelemetry block in `settings.json`. Unrelated keys are preserved. |
 | [`scripts/sabia-report-binding.mjs`](scripts/sabia-report-binding.mjs) | Links an accepted report to the tool call and session that made it. |
-| [`scripts/sabia-connector-hook.mjs`](scripts/sabia-connector-hook.mjs) | Under the tool-output grant only: after a successful Drive or GitHub connector mutation, sends the identifiers in its reply. Claude Code exports connector arguments but never their results, so without it a Doc created through the Drive connector cannot be identified. Reads, other connectors and failed calls send nothing; there is no retry spool. |
+| [`scripts/sabia-connector-hook.mjs`](scripts/sabia-connector-hook.mjs) | Under the tool-output grant only: after a successful connector mutation, sends the identifiers in its reply. Claude Code exports connector arguments but never their results, so without it a Doc created through the Drive connector cannot be identified. Which operations count and which identifiers it keeps come from Sabia's connector hook contract, fetched with the native usage key, cached for 24 hours and replaced by the last good copy, then the bundled v1 contract, when Sabia cannot be reached. Reads, other connectors and failed calls send nothing; there is no retry spool. |
 | [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after `report_artifact`, and the connector hook after MCP tools. |
 
 A report records that work was done. It never performs the work, and a
@@ -148,8 +148,36 @@ pnpm test
 ```
 
 The tests cover connect, sync and disconnect against a local handoff server,
-the Cowork helper, the plugin manifest and the report-binding hook. The shared
-report contract is pinned in [`contracts/v2`](contracts/v2/README.md).
+the Cowork helper, the plugin manifest, the report-binding hook and the connector
+hook. The shared report contract is pinned in [`contracts/v2`](contracts/v2/README.md);
+the connector hook's vendored contract and its identity-path parity cases, generated
+from the dashboard's own projector, are in [`contracts/connector-hook`](contracts/connector-hook).
+`identity-paths-v3.json` is a byte copy of the dashboard's
+`tests/fixtures/claude-code-identity-paths-v3.json`; when the dashboard regenerates
+it, copy it again rather than editing it here.
+
+### Changing the connector hook contract
+
+Clients cache the contract for 24 hours, and keep using the last good copy for as
+long as Sabia cannot be reached, so the server never knows which contract a hook
+is applying. Any change to `identityPaths` is therefore expand, deploy, contract,
+the same rule as a database migration:
+
+1. **Expand.** Add the new path, `as` name or operation beside the old one, and
+   have the module read both.
+2. **Deploy**, and wait at least one release (well past the 24-hour cache) so every
+   connected hook has fetched the expanded contract.
+3. **Contract.** Only then remove or rename the old declaration, or deactivate the
+   module that declared it.
+
+Never rename or remove an `as`, change its `kind`, or deactivate a module's paths
+in a single release: a hook still on the old contract would send names the server
+no longer declares, and the server rejects that whole subtree. The contract's own
+shape is pinned on both sides (the dashboard's
+`tests/unit/claude-code-identity-path-parity.test.ts` and this repository's
+`parseConnectorContract`); this hook rejects a contract with any key, kind or cap it
+does not know and falls back to its last good copy, so a new field needs a plugin
+release that accepts it before the server may serve it.
 
 To release, tag `vX.Y.Z`. The release workflow runs the checks and attaches
 `sabia-claude-plugin.tar.gz`. The installed identifier stays
