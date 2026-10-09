@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "sabia",
   "display_name": "Sabia",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Share your Claude Cowork usage with your Sabia organization, on any Claude plan.",
   "long_description": "Sabia measures what AI costs and what it produces. This extension reads the usage Claude Desktop records for your Cowork sessions on this device — per turn and model: tokens, number of calls, time and session id — and sends it to your Sabia organization, where it is attributed to you. It never sends prompts, responses or file contents unless you turn on content sharing below and an owner or administrator approves it in Sabia. After installing, approve the connection in the browser page that opens; usage then syncs every ten minutes while Claude is open.",
   "author": {
