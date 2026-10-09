@@ -132,7 +132,7 @@ async function connect() {
   }
   if (traceCapture) {
     process.stdout.write(
-      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents; MCP response bodies are not exported by the client today — and Sabia will keep a reduced per-tool extract.\n",
+      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents, and from Claude Code 2.1.283 the results of connector (MCP) tools, WebFetch and WebSearch, which can include document text, email bodies and web pages — and Sabia will keep a reduced per-tool extract.\n",
     );
   }
   process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
