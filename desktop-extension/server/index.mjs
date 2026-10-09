@@ -26,7 +26,7 @@ import {
 } from "./lib/cowork-local.mjs";
 import { approvedHandoff, connectHandoff, readResponseJson } from "./lib/sabia-http.mjs";
 
-const SERVER_INFO = { name: "sabia", version: "0.4.0" };
+const SERVER_INFO = { name: "sabia", version: "0.5.0" };
 const PROTOCOL_VERSION = "2025-06-18";
 const SYNC_INTERVAL_MS = 10 * 60 * 1_000;
 
