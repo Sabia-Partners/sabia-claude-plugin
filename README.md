@@ -133,6 +133,48 @@ set, and in `~/.claude` otherwise.
 
 Records Sabia already accepted stay in your workspace.
 
+## Cloud sessions
+
+Cloud sessions run on Anthropic's machines: claude.ai/code, `claude --cloud`,
+the Desktop app's Cloud option and routines. They never read the
+`settings.json` this plugin writes, so connecting on your computer does not
+cover them. They send token counts to Sabia only when the exporter variables
+are set on the cloud environment itself. This works on Pro, Max, Team and
+Enterprise.
+
+1. In Sabia, go to **Settings → Connected Tools**. On the Claude card, under
+   **Claude Code cloud sessions**, select **Get cloud session values**. Sabia issues a key for
+   your cloud sessions only and shows the variables once. Issuing again
+   revokes the previous key.
+2. At [claude.ai/code](https://claude.ai/code), open the environment selector
+   under the message box. Edit one of your **Personal** environments, or add
+   one.
+3. Paste the variables into **Environment variables**.
+4. Set **Network access** to **Custom** and add the Sabia host shown with the
+   variables, for example `app2.sabiapartners.ca`. Check **Also include
+   default list of common package managers** if your sessions install
+   packages.
+5. Start a new cloud session in that environment. Its usage appears under
+   Claude Code in Sabia after a few minutes.
+
+This sends the same metrics-only token counts as the default native usage
+connection. Prompts, responses, tool arguments and file contents are not sent.
+These steps do not set up Output Reporting for cloud sessions, and the
+tool-output grant cannot be turned on for a cloud key: cloud sessions send no
+traces, so it would stop Sabia counting their usage.
+
+Keep the key in a **personal** environment. Anyone who can use an environment
+can read its variables, and Sabia credits every session in it to the person
+who issued the key. Never put it in an environment shared with your
+organization. Claude Code does not pass `OTEL_*` variables to the commands it
+runs, so code in the session cannot read the key.
+
+Two other places that look right do not work. Network secrets never reach
+Claude Code's telemetry export. A repository's `.claude/settings.json` cannot
+turn telemetry on. A server-managed settings `env` block would also reach
+every member's own computer and replace their personal keys, so Sabia does
+not use it.
+
 ## Cowork
 
 [`cowork/`](cowork/README.md) is an administrator helper for Claude Cowork's
