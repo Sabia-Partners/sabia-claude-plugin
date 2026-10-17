@@ -142,8 +142,8 @@ cover them. They send token counts to Sabia only when the exporter variables
 are set on the cloud environment itself. This works on Pro, Max, Team and
 Enterprise.
 
-1. In Sabia, go to **Settings → Connected Tools**. On the Claude card, under
-   **Claude Code cloud sessions**, select **Get cloud session values**. Sabia issues a key for
+1. In Sabia, go to **Settings → Connected Tools**, select **Connect a tool**,
+   then **Set up** on Claude Code, and select **Get cloud session values**. Sabia issues a key for
    your cloud sessions only and shows the variables once. Issuing again
    revokes the previous key.
 2. At [claude.ai/code](https://claude.ai/code), open the environment selector
