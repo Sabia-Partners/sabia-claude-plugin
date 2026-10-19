@@ -70,8 +70,6 @@ export const WORK_SOURCE_IDENTITY_KEY = "work_source_identity";
 const MAX_PATH_VALUE_CHARS = 2048;
 /** Provider ids and keys: no whitespace, so no names, titles or prose. */
 const OPAQUE_IDENTITY_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:@#/+=~-]{0,255}$/;
-/** An email address is personal data, never an id-path identity. */
-const EMAIL_SHAPED = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 /** MCP transport envelopes an identity path may sit inside. */
 const IDENTITY_PATH_TRANSPORT_KEYS = ["structuredContent", "structured_content", "content", "result"];
 
@@ -203,8 +201,9 @@ function decodeStructured(value, state, depth = 0) {
 // carry them under allowlisted keys: a Drive File's `owner` is the owner's email.
 // A URL is kept, minus any part that carries an address. Port of the
 // dashboard's scrubIdentityScalar, pinned by contracts/connector-hook/v1.json.
-const EMAIL_ADDRESS = /^[A-Za-z0-9._%+'-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+$/;
-const CONTAINS_EMAIL = /[A-Za-z0-9._%+'-]+@[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)+/;
+// Letters and digits in any script, so an internationalized address is caught.
+const EMAIL_ADDRESS = /^[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?)+$/u;
+const CONTAINS_EMAIL = /[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?)+/u;
 /** Decodes every well-formed percent escape and leaves malformed ones as they are. */
 function decodeLeniently(value) {
   return value.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {
@@ -229,9 +228,10 @@ export function scrubIdentityScalar(value) {
   if ((url.username || url.password) && CONTAINS_EMAIL.test(decodeLeniently(`${url.username}:${url.password}`))) {
     url.username = ""; url.password = ""; changed = true;
   }
-  for (const [key, entry] of [...url.searchParams.entries()]) {
-    if (CONTAINS_EMAIL.test(decodeLeniently(key)) || CONTAINS_EMAIL.test(decodeLeniently(entry))) { url.searchParams.delete(key); changed = true; }
-  }
+  // Pairs, not keys: `delete(key)` would also drop a repeated key's safe values.
+  const params = [...url.searchParams.entries()];
+  const keptParams = params.filter(([key, entry]) => !CONTAINS_EMAIL.test(decodeLeniently(key)) && !CONTAINS_EMAIL.test(decodeLeniently(entry)));
+  if (keptParams.length !== params.length) { url.search = new URLSearchParams(keptParams).toString(); changed = true; }
   if (CONTAINS_EMAIL.test(decodeLeniently(url.hash))) { url.hash = ""; changed = true; }
   const kept = changed ? url.toString() : value;
   return CONTAINS_EMAIL.test(decodeLeniently(kept)) ? null : kept;
@@ -462,13 +462,18 @@ function exactIdentityArray(value) {
   const items = value.map(exactIdentityScalar);
   return items.every((item) => item !== null) ? items : null;
 }
-/** A bounded identity literal for an `id` path; never an email address. */
+/**
+ * A bounded identity literal for an `id` path. An email address goes through
+ * the same scrubber as every other projected scalar, so a URL keeps its
+ * identity minus the address.
+ */
 function identityPathValue(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (typeof value !== "string") return null;
-  const literal = value.trim();
-  if (!literal || literal.length > MAX_PATH_VALUE_CHARS) return null;
-  if (EMAIL_SHAPED.test(literal)) return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > MAX_PATH_VALUE_CHARS) return null;
+  const literal = scrubIdentityScalar(trimmed);
+  if (literal === null) return null;
   return isIdentityLiteral(literal) || OPAQUE_IDENTITY_TOKEN.test(literal) ? literal : null;
 }
 /** A boolean for a `flag` path; the exact strings "true"/"false" are normalized. */

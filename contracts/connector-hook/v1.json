@@ -508,6 +508,73 @@
         },
         "omissionReason": null
       }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+            "owner": "josé@exämple.de",
+            "title": "Q4 pipeline review"
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": {
+              "id": "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I",
+              "title": "Q4 pipeline review"
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": "https://github.com/acme/app/pull/42?contact=jos%C3%A9%40ex%C3%A4mple.de&tab=files"
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": "https://github.com/acme/app/pull/42?tab=files"
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "url": "https://github.com/acme/app/pull/42?tab=files&tab=lucas@example.com&tab=commits",
+            "number": 42
+          }
+        }
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "output": {
+              "url": "https://github.com/acme/app/pull/42?tab=files&tab=commits",
+              "number": 42
+            }
+          }
+        },
+        "omissionReason": null
+      }
     }
   ]
 }

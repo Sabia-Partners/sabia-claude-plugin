@@ -190,6 +190,12 @@ describe("Claude Code connector hook", () => {
     const padded = { ...realDriveCreate, tool_response: [{ type: "text", text: JSON.stringify({ ...realDriveCreate.tool_response, owner: " lucas@example.com " }) }] };
     expect(JSON.stringify(connectorEnvelope(padded))).not.toContain("lucas@example.com");
   });
+  it("drops internationalized addresses and keeps a repeated key's safe values, like the dashboard", () => {
+    expect(scrubIdentityScalar("josé@exämple.de")).toBeNull();
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=jos%C3%A9%40ex%C3%A4mple.de&tab=files")).toBe("https://github.com/acme/app/pull/42?tab=files");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?tab=files&tab=lucas@example.com&tab=commits")).toBe("https://github.com/acme/app/pull/42?tab=files&tab=commits");
+    expect(scrubIdentityScalar("owner/repo@0123456789abcdef")).toBe("owner/repo@0123456789abcdef");
+  });
   it("never reads the credential from the hook's environment, which Claude Code withholds OTEL_* from", async () => {
     await rm(join(directory, "sabia-otel-state.json"));
     const fetch = vi.fn();

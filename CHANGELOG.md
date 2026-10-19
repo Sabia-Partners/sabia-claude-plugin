@@ -3,6 +3,7 @@
 ## 0.4.1 (unreleased)
 
 - The connector hook and the dashboard drop email addresses from connector identities. The Google Drive connector's `create_file` reply names the file's owner by email under the allowlisted `owner` key. A bare or padded address is dropped; a URL keeps its identity minus any userinfo, query parameter or fragment that carries one. Matches dashboard-langfuse#268 through the shared contract.
+- Work Source identity paths go through the same scrubber, so a URL id keeps its identity minus an address instead of being dropped whole. Addresses in any script are caught, and a repeated query key keeps its safe values. Pinned by both shared fixtures.
 - Pin the real Drive connector's `create_file` arguments (`title`, `textContent`, `contentMimeType`) and reply (a File object) in the tests and the shared contract.
 - The hook still needs the state and settings the `connect` flow writes. Claude Code withholds `OTEL_*` variables from hooks, so machines whose telemetry was set up by hand or by managed settings must run `connect` for connector creations to be reported.
 
