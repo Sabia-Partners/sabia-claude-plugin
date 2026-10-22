@@ -1,7 +1,7 @@
 # Setting up Sabia for Claude Code
 
-You need Claude Code with Node 22 or newer, and a Sabia workspace you can sign
-in to. The two connections below are independent. Set up either one, or both.
+You need Claude Code 2.1.81 or later with Node 22 or newer, and a Sabia
+workspace you can sign in to. The two connections below are independent. Set up either one, or both.
 
 ## 1. Install
 
@@ -52,7 +52,7 @@ this.
 
 | Symptom | Fix |
 | --- | --- |
-| Sign-in fails with a redirect error | OAuth uses a fixed callback on port `45711`. Free that port and retry. |
+| Sign-in says the server does not support dynamic client registration | Update Claude Code to 2.1.81 or later. |
 | Usage does not appear in Sabia | Start a new session after connecting. Check `status`. |
 | A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Widening also waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
 | `status` says Sabia revoked this device | Run `disconnect` to clean up, then connect again. |

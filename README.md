@@ -32,6 +32,8 @@ that produced it.
 
 Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →
 `plugin:sabia:sabia-artifacts` to connect Output Reporting. [SETUP.md](SETUP.md) walks through both, step by step.
+Needs Claude Code 2.1.81 or later. For Claude on the web, Desktop and mobile, see
+[Connect Claude to Sabia](https://app2.sabiapartners.ca/help/claude).
 
 You need a Sabia workspace. Talk to [Sabia Partners](https://sabiapartners.ca/contact)
 if your team does not have one yet.
@@ -153,8 +155,8 @@ set, and in `~/.claude` otherwise.
 
 1. `node scripts/sabia.mjs disconnect` revokes the native usage key and
    restores whatever the managed variables held before.
-2. `/mcp` → `sabia-artifacts` → *Clear authentication* disconnects reporting on
-   this machine. Revoke it for good in Sabia → Settings → Members → Details → Output Reporting.
+2. `/mcp` → `plugin:sabia:sabia-artifacts` → *Clear authentication* disconnects reporting on
+   this machine. Revoke it for good in Sabia → Settings → Connected Tools → Manage.
 3. `/plugin uninstall sabia@sabia`.
 
 Records Sabia already accepted stay in your workspace.

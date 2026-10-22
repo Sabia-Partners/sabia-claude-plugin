@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0
+
+- **Sign-in uses Claude's published identity.** Output Reporting no longer pins the `sabia-claude-code` client or callback port `45711`, so sign-in works when that port is busy. Needs Claude Code 2.1.81 or later. After updating, `/mcp` may ask you to sign in once more; the earlier connection stays under Settings → Connected Tools in Sabia until you revoke it.
+
 ## 0.6.1
 
 - **Back at the repository root.** The Claude Desktop extension and the Cowork helper moved, with their history, to [Sabia-Partners/sabia-claude-desktop](https://github.com/Sabia-Partners/sabia-claude-desktop), so this repository is the plugin alone. Anthropic's directory holds every version of a plugin in a subfolder whose hooks run Node scripts for a reviewer; at the root it does not. The marketplace entry is `./` again.

@@ -38,10 +38,10 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(server.url).toBe("https://app2.sabiapartners.ca/api/mcp/artifacts");
     expect(server.command).toBeUndefined();
     expect(server.headers).toBeUndefined();
-    // Sabia's authorization server has no dynamic registration, so Claude Code
-    // must present the registered client and a fixed callback port whose
-    // redirect URI is on the allowlist.
-    expect(server.oauth).toEqual({ clientId: "sabia-claude-code", callbackPort: 45711 });
+    // Sabia advertises Client ID Metadata Documents, so Claude Code signs in
+    // with Claude's published identity on any free port. A pinned client would
+    // override that and bring back the fixed port.
+    expect(server.oauth).toBeUndefined();
   });
 
   it("keeps the native usage sync and binds reports only from the scoped report tool", async () => {
