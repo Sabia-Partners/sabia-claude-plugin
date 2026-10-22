@@ -160,7 +160,7 @@ describe("Sabia Desktop Extension", () => {
     const { tool } = start();
     await until(() => connectRequests.length === 1);
     approved = true;
-    await until(() => posts.length === 1);
+    await until(async () => (await tool("sabia_status")).includes("sent 1 events"));
 
     // Claude Code restored res-1's totals (10 in, 500 out) and added this turn's own.
     await appendFile(
@@ -211,7 +211,9 @@ describe("Sabia Desktop Extension", () => {
     const { tool } = start();
     await until(() => connectRequests.length === 1);
     approved = true;
-    await until(() => posts.length === 1);
+    // Wait for the first sync to finish, not just to post: sabia_sync_now
+    // joins a sync still in flight and would report that one instead.
+    await until(async () => (await tool("sabia_status")).includes("sent 1 events"));
 
     revoked = true;
     expect(await tool("sabia_sync_now")).toContain("revoked");
