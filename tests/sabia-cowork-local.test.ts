@@ -279,6 +279,20 @@ describe("turns that carry the previous totals over", () => {
     ]);
   });
 
+  it("trusts a main model holding exactly its own share over a side model that repeats its counts", async () => {
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50], [haiku]: [8, 1, 0, 0] }, [10, 100, 1000, 50]),
+      init(),
+      turn("r2", 2, { [opus]: [30, 900, 9000, 600], [haiku]: [8, 1, 0, 0] }, [30, 900, 9000, 600]),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events).slice(2)).toEqual([
+      { sequence: `r2:${opus}`, tokens: [30, 900, 9000, 600] },
+      { sequence: `r2:${haiku}`, tokens: [8, 1, 0, 0] },
+    ]);
+  });
+
   it("sends that same shape whole on a Claude Code version that does not restore totals", async () => {
     await write([
       init("cli-1", { version: "2.1.237" }),

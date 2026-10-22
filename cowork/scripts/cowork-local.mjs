@@ -276,13 +276,13 @@ const RESTORES_TOTALS_FROM = [2, 1, 288];
 /**
  * The tokens one result adds, per model, and the session's next baseline.
  *
- * A turn carries the previous totals over when a model it did not use comes
- * back with exactly the previous totals, or when its main model grew by
- * exactly what `result.usage` (the main thread's own share of this turn)
- * reports. When a subagent also used the main model, neither test can pass and
- * the tokens alone cannot tell the two apart (the log does not record
- * subagent calls), so such a turn counts as carried on a Claude Code version
- * known to restore totals, and as fresh before it. A turn whose totals went
+ * A turn carries the previous totals over when its main model grew by exactly
+ * what `result.usage` (the main thread's own share of this turn) reports, and
+ * is fresh when the main model holds exactly that share. When a subagent also
+ * used the main model, neither test can pass and the tokens alone cannot tell
+ * the two apart (the log does not record subagent calls): such a turn is
+ * carried if a model it did not use came back with exactly the previous
+ * totals, or if it ran on a Claude Code version known to restore totals. A turn whose totals went
  * down anywhere is a fresh start. Totals never go below the baseline in a
  * carried turn, so no difference is negative.
  */
@@ -314,20 +314,20 @@ function carriesOver(entry, totals, baseline) {
     ([model, before]) => totals[model] && totals[model].every((value, index) => value >= before[index]),
   );
   if (!grew) return false;
-  const unchanged = Object.entries(previous).some(
-    ([model, before]) =>
-      before.some((value) => value > 0) && totals[model].every((value, index) => value === before[index]),
-  );
-  if (unchanged) return true;
 
   const own = TOKEN_CLASSES.map(([, field]) => count(entry.usage?.[field]));
   const main = totals[baseline.model] ?? NO_TOKENS;
   const mainBefore = previous[baseline.model] ?? NO_TOKENS;
   if (mainBefore.some((value) => value > 0)) {
     if (main.every((value, index) => value - mainBefore[index] === own[index])) return true;
+    // Only a fresh turn can hold no more than its own share.
     if (main.every((value, index) => value === own[index])) return false;
   }
-  return restoresTotals(baseline.version);
+  const unchanged = Object.entries(previous).some(
+    ([model, before]) =>
+      before.some((value) => value > 0) && totals[model].every((value, index) => value === before[index]),
+  );
+  return unchanged || restoresTotals(baseline.version);
 }
 
 function restoresTotals(version) {
