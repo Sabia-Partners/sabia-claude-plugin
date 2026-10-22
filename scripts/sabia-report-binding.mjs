@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Claude Code PostToolUse bridge: after the hosted `report_artifact` tool has
+// Claude Code PostToolUse bridge: after a hosted report tool has
 // returned an accepted receipt, tell Sabia which native tool call and session
 // made it. Reports themselves stay the MCP server's job; this never reports,
 // never reads a transcript, and never changes a tool result.
@@ -10,8 +10,9 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // Claude Code scopes a plugin-bundled server as mcp__plugin_<plugin>_<server>__<tool>;
-// the bare form covers a user who configured the same server by hand.
-const REPORT_TOOL = /^mcp__(?:plugin_sabia_)?sabia-artifacts__report_artifact$/;
+// the bare form covers a user who configured the same server by hand. Both
+// report versions return the same receipt proof.
+const REPORT_TOOL = /^mcp__(?:plugin_sabia_)?sabia-artifacts__report_artifact(?:_v3)?$/;
 const PROOF = /^sbia_proof_[A-Za-z0-9_-]{43}$/;
 const MANAGED_HEADER_PATTERN = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
 const EXPORTER_PATHS = ["/api/v1/telemetry/otlp", "/api/v1/telemetry/otlp/v1/metrics"];

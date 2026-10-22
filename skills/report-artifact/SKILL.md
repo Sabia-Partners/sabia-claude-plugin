@@ -10,12 +10,14 @@ pull requests and presentations. Creating a document and later materially editin
 it produces two Outputs linked to one Artifact. A generated response or trace
 alone does not qualify.
 
-Use the connected `report_artifact` tool after the producing operation has
-succeeded. The plugin bundles the server as `sabia-artifacts`, so Claude Code
-lists its tools under the scoped names
-`mcp__plugin_sabia_sabia-artifacts__report_artifact`,
-`…__get_artifact_report`, `…__get_reporting_context` and
-`…__begin_reporting_session`. This skill works through those hosted tools only:
+Use the connected `get_reporting_contract` and `report_artifact_v3` tools after
+the producing operation has succeeded. The plugin bundles the server as
+`sabia-artifacts`, so Claude Code lists its tools under the scoped names
+`mcp__plugin_sabia_sabia-artifacts__report_artifact_v3`,
+`…__get_reporting_contract`, `…__get_artifact_report`,
+`…__get_reporting_context` and `…__begin_reporting_session`. Do not use
+`report_artifact`: Sabia accepts new reports only through
+`report_artifact_v3`. This skill works through those hosted tools only:
 no shell, no Node process, no credential file, and nothing in the native OTel
 configuration that `connect-sabia` manages. Native usage collection continues
 independently through that skill and is never a substitute for a report.
@@ -64,13 +66,23 @@ authorize producing, publishing or sending anything on its own.
 
 ## Report construction
 
-Use schema version 2 exactly as the tool's input schema describes it. Mint a
-stable `event_id` once the operation has succeeded and keep it with the report;
-reuse it and the identical request for every retry. `source_application` is
-`claude_code`. The Artifact's source system (`github`, `google_drive`, `slack`,
-`host`, `web`) is where the object lives, not the application that produced it.
+First call `get_reporting_contract` with `source_application` `claude_code` and
+the operation's `source_system`, `artifact_type` and `action`. It says whether
+that combination can be reported and returns the input schema, the identity and
+evidence rules, the current `contract_version` and `configuration_revision`,
+and an example. If it is unsupported or disabled, stop: tell the user in one
+sentence and do not report another way. Otherwise call `report_artifact_v3`
+with exactly what the contract describes.
+
+Mint a stable `event_id` once the operation has succeeded and keep it with the
+report; reuse it and the identical request for every retry.
+`source_application` is `claude_code`. The Artifact's source system (`github`,
+`google_drive`, `host` and so on) is where the object lives, not the
+application that produced it.
 The service fixes the authenticated organization, reporter and collection
 method `skill_tool`; do not send credentials or identifiers for them.
+
+Where the guidance below differs from the contract, the contract wins.
 
 Use actual provider identities from the successful operation. Do not infer an
 identity from a title or manufacture a URL. For GitHub, `account_id` is the
@@ -86,8 +98,11 @@ For host files, take the authenticated `artifact_account_id` from
 Keep paths non-public and availability `host_local` or `temporary`. Do not
 fetch a host path remotely or claim permanent storage.
 
-Use only allowlisted receipt references in `evidence`. Never include file
-content, transcripts, prompt or response text, credentials, tokens or complete
+In `evidence`, use basis `tool_success` (`host_delivery` for a file you
+delivered on the host) and exactly one reference the producing operation
+returned: a provider event ID, a revision ID such as a pushed commit
+SHA, or the producing tool call's reference. A read or lookup never counts.
+Never include file content, transcripts, prompt or response text, credentials, tokens or complete
 tool payloads. Use a short nullable title. Secret-bearing URLs must not be
 sent; if an exact safe reference is unavailable, leave the reference null —
 the Artifact identity can still be supplied without one. For unsupported

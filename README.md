@@ -98,7 +98,7 @@ flowchart LR
     Bind["Invocation binding"]
   end
   CC -- "OpenTelemetry metrics" --> OTLP
-  Skill -- "report_artifact (OAuth)" --> MCP
+  Skill -- "report_artifact_v3 (OAuth)" --> MCP
   MCP -- "receipt" --> Hook
   Hook -- "tool_use_id + hashed session" --> Bind
   Sync -- "read grants" --> OTLP
@@ -112,7 +112,7 @@ flowchart LR
 | [`scripts/sabia.mjs`](scripts/sabia.mjs) | Writes and removes the managed OpenTelemetry block in `settings.json`. Unrelated keys are preserved. |
 | [`scripts/sabia-report-binding.mjs`](scripts/sabia-report-binding.mjs) | Links an accepted report to the tool call and session that made it. |
 | [`scripts/sabia-connector-hook.mjs`](scripts/sabia-connector-hook.mjs) | Under the tool-output grant only: after a successful connector mutation, sends the identifiers in its reply. Claude Code exports connector arguments but never their results, so without it a Doc created through the Drive connector cannot be identified. Which operations count and which identifiers it keeps come from Sabia's connector hook contract, fetched with the native usage key, cached for 24 hours and replaced by the last good copy, then the bundled v1 contract, when Sabia cannot be reached. Reads, other connectors and failed calls send nothing; there is no retry spool. |
-| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after `report_artifact`, and the connector hook after MCP tools. |
+| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after a report, and the connector hook after MCP tools. |
 
 ### Everything this plugin runs, sends and fetches
 
@@ -125,7 +125,7 @@ instructions are downloaded.
 | You ask to connect (`connect-sabia` skill) | `scripts/sabia.mjs connect`, which opens your browser with `open`, `xdg-open` or `start` | `POST /api/v1/telemetry/connect`, then polls `GET /api/v1/telemetry/connect/<id>` until you approve | The `env` block in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`, mode 0600 |
 | Every session start | `scripts/sabia.mjs sync --quiet` and `scripts/sabia-report-binding.mjs` | `GET /api/v1/telemetry/connection` (the grants for this key); retries of queued report bindings | The settings and `~/.claude/sabia-otel-state.json` when a grant narrowed or a wider one is waiting; the report-binding queue as items are sent or expire |
 | Claude Code itself, once connected | Nothing extra | Token metrics to `/api/v1/telemetry/otlp`; under the tool-output grant, log records to the same endpoint and traces to `/api/v1/telemetry/traces` | Nothing |
-| After `report_artifact` | `scripts/sabia-report-binding.mjs` | `POST /api/v1/artifact-reporting/claude-code-invocation` | A retry queue in the plugin's data directory |
+| After `report_artifact_v3` | `scripts/sabia-report-binding.mjs` | `POST /api/v1/artifact-reporting/claude-code-invocation` | A retry queue in the plugin's data directory |
 | After any MCP tool call | `scripts/sabia-connector-hook.mjs`, which exits at once unless the tool-output grant is on and the call was a successful connector create or update | `GET /api/v1/telemetry/claude-code/hooks/contract` (a JSON allowlist of operations, at most daily), `POST /api/v1/telemetry/claude-code/hooks` | The contract cache in the plugin's data directory, and a retry-pause marker in the system temporary directory |
 | You approve a wider grant (`approve`) | `scripts/sabia.mjs approve` | `GET /api/v1/telemetry/connection` | The settings and `~/.claude/sabia-otel-state.json` |
 | You run `disconnect` | `scripts/sabia.mjs disconnect` | `DELETE /api/v1/telemetry/connection` | Restores the settings you had before |
@@ -221,7 +221,8 @@ pnpm test
 
 The tests cover connect, sync and disconnect against a local handoff server,
 the plugin manifest, the report-binding hook and the connector
-hook. The shared report contract is pinned in [`contracts/v2`](contracts/v2/README.md);
+hook. New reports follow the v3 contract that `get_reporting_contract` returns; the
+earlier v2 contract, kept for receipt recovery, is pinned in [`contracts/v2`](contracts/v2/README.md);
 the connector hook's vendored contract and its identity-path parity cases, generated
 from the dashboard's own projector, are in [`contracts/connector-hook`](contracts/connector-hook).
 `identity-paths-v3.json` is a byte copy of the dashboard's
