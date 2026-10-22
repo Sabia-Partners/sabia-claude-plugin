@@ -17,7 +17,7 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile
       - run: pnpm check && pnpm test
-      - run: tar -czf sabia-claude-plugin.tar.gz .claude-plugin .mcp.json skills scripts hooks contracts cowork README.md SECURITY.md CHANGELOG.md
+      - run: tar -czf sabia-claude-plugin.tar.gz .claude-plugin .mcp.json skills scripts hooks contracts cowork README.md SETUP.md SECURITY.md LICENSE CHANGELOG.md
       # The Claude Desktop extension. Sabia links to
       # releases/latest/download/sabia.mcpb, so the asset name must not change.
       - run: pnpm build:extension
