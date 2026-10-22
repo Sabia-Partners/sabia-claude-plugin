@@ -21,8 +21,11 @@ it with a generated or preview Vercel URL. For local Sabia development, add
 `configure --endpoint <url> --ingestion-key <key>`; browser connect is the
 normal path.
 
-This plugin never exports prompt text. If the user asks for prompts to be
-shared, say so; there is no flag for it.
+This plugin never turns on prompt text. If the user asks for prompts to be
+shared, explain that Claude Code includes them only when
+`OTEL_LOG_USER_PROMPTS=1` is in their own settings, that Sabia keeps them only
+when their organization granted raw capture, and that it is their choice to set
+it. Do not set it for them.
 
 ## Tool output
 
@@ -30,13 +33,14 @@ shared, say so; there is no flag for it.
 requests and issues created with `gh` — on Sabia's Output page. Before running
 it, tell the user plainly that Claude Code will export tool result bodies and
 the command lines that produced them (command output can include file contents
-when a command echoes them), that Sabia keeps a reduced per-tool extract and
-drops file-tool bodies, and that every member of the organization can read
-what is kept. Prompt text and assistant responses are not exported by this
-flag. Confirm before running.
+when a command echoes them), plus its tool events with each tool's arguments,
+MCP server and tool names and skill names, that Sabia keeps a reduced per-tool
+extract and drops file-tool bodies, and that every member of the organization
+can read what is kept. Claude Code redacts prompt text in those events, and
+assistant responses are not exported. Confirm before running.
 
 The grant is recorded on the ingestion key at approval; reconnecting without
-the flag turns the trace export off.
+the flag turns the log and trace export off.
 
 Two expectations to set: only work done in **new** sessions after connecting
 can appear, and identification depends on where the artifact's identity shows
@@ -84,7 +88,7 @@ Run `node <plugin-root>/scripts/sabia.mjs disconnect`. It revokes the current ke
 
 ## Safety
 
-- Keep `OTEL_LOGS_EXPORTER` at `none` always, and `OTEL_TRACES_EXPORTER` at `none` unless the user explicitly chose tool output. Claude Code's log records and trace events carry conversational and tool content, and the default connector's promise is that only token metrics leave the machine.
+- Keep `OTEL_LOGS_EXPORTER` and `OTEL_TRACES_EXPORTER` at `none` unless the user explicitly chose tool output. Never set, change or remove `OTEL_LOG_USER_PROMPTS`. Claude Code's log records and trace events carry conversational and tool content, and the default connector's promise is that only token metrics leave the machine.
 - Never set `OTEL_LOG_RAW_API_BODIES` or `OTEL_LOG_ASSISTANT_RESPONSES`. Complete Messages API conversations are something no grant of this connector asks for, and assistant response text is explicitly outside the tool-output grant's consent copy. Let the script manage `OTEL_LOG_TOOL_CONTENT` and `OTEL_LOG_TOOL_DETAILS`; never set them by hand.
 - Keep the temporality preference on `delta`. Cumulative export restates running totals, which Sabia rejects rather than double-counting — the visible symptom is silently missing usage.
 - Preserve unrelated `settings.json` keys, and never rewrite the file if it fails to parse.

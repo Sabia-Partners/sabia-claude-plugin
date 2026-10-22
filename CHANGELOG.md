@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1
+
+- **Back at the repository root.** The Claude Desktop extension and the Cowork helper moved, with their history, to [Sabia-Partners/sabia-claude-desktop](https://github.com/Sabia-Partners/sabia-claude-desktop), so this repository is the plugin alone. Anthropic's directory holds every version of a plugin in a subfolder whose hooks run Node scripts for a reviewer; at the root it does not. The marketplace entry is `./` again.
+- **Tool output now includes Claude Code's tool events.** The tool-output grant also turns on Claude Code's log export, which carries each tool's arguments, MCP server and tool names and skill names. Sabia uses them to identify connector updates and the skills a session used, which 0.6.0 lost along with raw capture. Claude Code redacts prompt text in those events. A device set up for tool output before 0.6.1 is asked to approve the wider export at its next session start, like any other widening, and a log export left on without the grant is turned off.
+- **The plugin no longer manages `OTEL_LOG_USER_PROMPTS`.** It never sets, clears or restores it. Prompt text reaches Sabia only if the person sets it themselves, and Sabia keeps it only when their organization granted raw capture. `status` says when it is set.
+
 ## 0.6.0 (unreleased)
 
 Prepares the plugin for Anthropic's plugin directory.

@@ -8,10 +8,10 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { approvedHandoff } from "../plugins/sabia/scripts/sabia-http.mjs";
+import { approvedHandoff } from "../scripts/sabia-http.mjs";
 
 const run = promisify(execFile);
-const pluginRoot = join(process.cwd(), "plugins", "sabia");
+const pluginRoot = process.cwd();
 const scriptPath = join(pluginRoot, "scripts/sabia.mjs");
 
 const ingestionKey = `sbia_ing_0123456789ab_${"A".repeat(43)}`;
@@ -241,13 +241,15 @@ describe("Sabia Claude Code plugin settings management", () => {
     // The command line is gated by tool details, and without it the
     // fail-closed shell-evidence gate identifies nothing (SAB-100).
     expect(env.OTEL_LOG_TOOL_DETAILS).toBe("1");
-    // The grant's consent copy says prompts and assistant responses are not
-    // exported, so neither gate may be set.
+    // Tool events, connector arguments and skill names ride the log records.
+    expect(env.OTEL_LOGS_EXPORTER).toBe("otlp");
+    expect(env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL).toBe("http/json");
+    expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe(endpoint);
+    // Claude Code redacts prompt text unless this is set, and the plugin
+    // never sets it; responses and raw bodies stay off too.
     expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
     expect(env.OTEL_LOG_ASSISTANT_RESPONSES).toBeUndefined();
     expect(env.OTEL_LOG_RAW_API_BODIES).toBeUndefined();
-    // Logs stay off: tool output is its own grant, not raw capture.
-    expect(env.OTEL_LOGS_EXPORTER).toBe("none");
   });
 
   it("clears the trace exporter when reconnecting without tool output", async () => {
@@ -269,7 +271,7 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(env.OTEL_LOG_TOOL_DETAILS).toBeUndefined();
   });
 
-  it("clears the prompt export an earlier version wrote when it reconfigures", async () => {
+  it("turns the log export off without tool output and leaves the prompt setting alone", async () => {
     await configureWithExporters({ logs: "otlp", traces: "none" }, {
       OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/json",
       OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: endpoint,
@@ -280,13 +282,14 @@ describe("Sabia Claude Code plugin settings management", () => {
 
     const env = (await readSettings()).env ?? {};
     expect(env.OTEL_LOGS_EXPORTER).toBe("none");
-    expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
     expect(env.OTEL_LOG_TOOL_DETAILS).toBeUndefined();
     expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBeUndefined();
     expect(env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL).toBeUndefined();
+    // The person's own choice: the plugin never writes, clears or restores it.
+    expect(env.OTEL_LOG_USER_PROMPTS).toBe("1");
   });
 
-  it("restores the user's own prompt-logging value on disconnect", async () => {
+  it("leaves the user's own prompt-logging value through connect and disconnect", async () => {
     await writeFile(
       settingsPath,
       JSON.stringify({ env: { OTEL_LOG_USER_PROMPTS: "0" } }),
@@ -327,21 +330,20 @@ describe("Sabia Claude Code plugin settings management", () => {
 
     const { stdout } = await sabia("status");
 
-    expect(stdout).toMatch(/tool result bodies and token counts are exported/i);
+    expect(stdout).toMatch(/tool result bodies, tool events with their arguments and skill names, and token counts are exported/i);
     // The regression: a trace-only connection used to be told the opposite.
     expect(stdout).not.toMatch(/only token counts are exported/i);
     expect(stdout).not.toMatch(/tool content are not/i);
     // Prompt text genuinely is not exported by this grant.
-    expect(stdout).toMatch(/prompt text and assistant responses are not/i);
+    expect(stdout).toMatch(/prompt text and assistant responses are not exported by this plugin/i);
   });
 
-  it("tells a device an earlier version set up for prompt export that it is still on", async () => {
-    await configureWithExporters({ logs: "otlp", traces: "none" });
+  it("says when the person's own setting adds prompt text", async () => {
+    await configureWithExporters({ logs: "otlp", traces: "otlp" }, { OTEL_LOG_USER_PROMPTS: "1" });
 
     const { stdout } = await sabia("status");
 
-    expect(stdout).toMatch(/only token counts are exported/i);
-    expect(stdout).toContain("Prompt export set up by an earlier version is still on");
+    expect(stdout).toContain("Prompt text is also exported, because OTEL_LOG_USER_PROMPTS is set");
   });
 
   it("still reports a metrics-only connection as token counts alone", async () => {
@@ -500,7 +502,7 @@ describe("Sabia Claude Code plugin settings management", () => {
       expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toBeUndefined();
     });
 
-    it("turns off prompt export an earlier version set up, whatever the grant says", async () => {
+    it("turns off a log export left on without the tool-output grant", async () => {
       await configureWithExporters({ logs: "otlp", traces: "none" }, {
         OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${serverEndpoint}/api/v1/telemetry/otlp`,
         OTEL_LOG_USER_PROMPTS: "1",
@@ -511,9 +513,28 @@ describe("Sabia Claude Code plugin settings management", () => {
 
       const env = (await readSettings()).env ?? {};
       expect(env.OTEL_LOGS_EXPORTER).toBe("none");
-      expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
+      expect(env.OTEL_LOG_USER_PROMPTS).toBe("1");
       expect(env.OTEL_METRICS_EXPORTER).toBe("otlp");
       expect(stdout).toContain("updated this device's capture");
+    });
+
+    it("asks before adding the log export to a tool-output device set up before 0.6.1", async () => {
+      await configureWithExporters({ logs: "none", traces: "otlp" }, {
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${serverEndpoint}/api/v1/telemetry/otlp`,
+      });
+      grants = { rawCapture: false, traceCapture: true };
+      const before = JSON.stringify(await readSettings());
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      expect(stdout).toContain("asked to widen what this device shares");
+      expect(JSON.stringify(await readSettings())).toBe(before);
+
+      await sabia("approve");
+      const env = (await readSettings()).env ?? {};
+      expect(env.OTEL_LOGS_EXPORTER).toBe("otlp");
+      expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
+      expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe(`${serverEndpoint}/api/v1/telemetry/otlp`);
     });
 
     it("changes nothing when approval cannot reach Sabia", async () => {

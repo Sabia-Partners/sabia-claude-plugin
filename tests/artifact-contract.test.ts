@@ -9,11 +9,10 @@ describe("report contract", () => {
     expect(createHash("sha256").update(schema).digest("hex")).toBe(manifest.sha256);
     expect(JSON.parse(schema).properties.schema_version.const).toBe(2);
     const marketplace = JSON.parse(await readFile(".claude-plugin/marketplace.json", "utf8"));
-    expect(marketplace.plugins).toEqual([expect.objectContaining({ name: "sabia", source: "./plugins/sabia" })]);
+    expect(marketplace.plugins).toEqual([expect.objectContaining({ name: "sabia", source: "./" })]);
     expect(marketplace.renames).toEqual({ "sabia-claude-code-otel": "sabia" });
-    const plugin = JSON.parse(await readFile("plugins/sabia/.claude-plugin/plugin.json", "utf8"));
+    const plugin = JSON.parse(await readFile(".claude-plugin/plugin.json", "utf8"));
     expect(plugin.repository).toBe("https://github.com/Sabia-Partners/sabia-claude-plugin");
     expect(JSON.parse(await readFile("package.json", "utf8")).version).toBe(plugin.version);
-    expect(JSON.parse(await readFile("desktop-extension/manifest.json", "utf8")).version).toBe(plugin.version);
   });
 });

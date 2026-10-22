@@ -12,7 +12,7 @@ import {
   connectorEnvelope, isMutation, loadConnectorContract, MUTATIONS, parseConnectorContract, parseIdentityPath,
   PRIMARY_IDENTITY_KEYS as PLUGIN_PRIMARY_KEYS, projectMutationIdentity as pluginProject, retryMarkerPath, runConnectorHook,
   VENDORED_CONTRACT, winningIdentityPathOperations,
-} from "../plugins/sabia/scripts/sabia-connector-hook.mjs";
+} from "../scripts/sabia-connector-hook.mjs";
 
 // The hook reads tool_name, tool_use_id, session_id, tool_input and
 // tool_response, reduces the last two to the identity allowlist, and posts
@@ -536,7 +536,7 @@ describe("fetching the contract", () => {
     await settings({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: local, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}`, OTEL_TRACES_EXPORTER: "otlp" });
     await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: "org", endpoint: local }));
     const started = Date.now();
-    const child = promisify(execFile)(process.execPath, ["plugins/sabia/scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "" }, timeout: 10_000 });
+    const child = promisify(execFile)(process.execPath, ["scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "" }, timeout: 10_000 });
     child.child.stdin!.end(JSON.stringify({ ...driveCreate, tool_name: "mcp__github__get_pull_request" }));
     const { stdout, stderr } = await child;
     expect(Date.now() - started).toBeLessThan(3000);
@@ -553,7 +553,7 @@ describe("fetching the contract", () => {
       await settings({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: local, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}`, OTEL_TRACES_EXPORTER: "otlp" });
       await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: "org", endpoint: local }));
       const started = Date.now();
-      const child = promisify(execFile)(process.execPath, ["plugins/sabia/scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "", TMPDIR: directory }, timeout: 12_000 });
+      const child = promisify(execFile)(process.execPath, ["scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "", TMPDIR: directory }, timeout: 12_000 });
       child.child.stdin!.end(JSON.stringify(driveCreate));
       const { stdout, stderr } = await child;
       const elapsed = Date.now() - started;
