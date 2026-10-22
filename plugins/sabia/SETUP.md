@@ -7,7 +7,7 @@ in to. The two connections below are independent. Set up either one, or both.
 
 ```text
 /plugin marketplace add Sabia-Partners/sabia-claude-plugin
-/plugin install sabia-claude-code-otel@sabia
+/plugin install sabia@sabia
 ```
 
 ## 2. Connect native usage
@@ -26,14 +26,14 @@ read its environment, so it keeps exporting nothing.
 To check the connection, ask Claude for your Sabia status, or run
 `node scripts/sabia.mjs status` from the plugin directory.
 
-The default connection sends token counts only. Tool output and raw capture
-are separate grants, described in the [README](README.md#opt-in-capture-grants).
-Ask for one only if you mean to share what it adds.
+The default connection sends token counts only. Tool output is a separate
+grant, described in the [README](README.md#opt-in-tool-output-grant). Ask for it
+only if you mean to share what it adds. Prompt text is never sent.
 
 ## 3. Connect Output Reporting
 
 1. Run `/mcp` in Claude Code.
-2. Choose `plugin:sabia-claude-code-otel:sabia-artifacts`.
+2. Choose `plugin:sabia:sabia-artifacts`.
 3. Sign in to Sabia, pick your organization and approve Output Reporting metadata
    sharing.
 
@@ -60,4 +60,4 @@ For a Sabia deployment other than the default, pass `--base-url <url>` to
 `connect` or set `SABIA_APP_URL`. On a machine without a browser, use
 `configure --endpoint <url> --ingestion-key <key>` with a key issued in Sabia.
 
-Questions: [hello@sabiapartners.com](mailto:hello@sabiapartners.com).
+Questions: [hello@sabiapartners.ca](mailto:hello@sabiapartners.ca) or [sabiapartners.ca/contact](https://sabiapartners.ca/contact).

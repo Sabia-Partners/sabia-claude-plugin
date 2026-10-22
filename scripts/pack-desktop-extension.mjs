@@ -18,7 +18,7 @@ const out = join(root, "dist", "sabia-desktop");
 const bundle = join(root, "dist", "sabia.mcpb");
 
 const manifest = JSON.parse(await readFile(join(root, "desktop-extension", "manifest.json"), "utf8"));
-const plugin = JSON.parse(await readFile(join(root, ".claude-plugin", "plugin.json"), "utf8"));
+const plugin = JSON.parse(await readFile(join(root, "plugins", "sabia", ".claude-plugin", "plugin.json"), "utf8"));
 if (manifest.version !== plugin.version) {
   throw new Error(`manifest.json ${manifest.version} and plugin.json ${plugin.version} must match`);
 }

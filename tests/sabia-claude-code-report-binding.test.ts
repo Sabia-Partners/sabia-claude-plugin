@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { conversationKey, nativeBinding, runReportBindingHook } from "../scripts/sabia-report-binding.mjs";
+import { conversationKey, nativeBinding, runReportBindingHook } from "../plugins/sabia/scripts/sabia-report-binding.mjs";
 
 // The hook posts the report call's tool_use_id and a device-hashed session_id
 // over the managed telemetry credential. Everything else in the hook input is
@@ -13,7 +13,7 @@ const proof = `sbia_proof_${"a".repeat(43)}`;
 const token = `sbia_ing_0123456789ab_${"b".repeat(43)}`;
 const endpoint = "https://app2.sabiapartners.ca/api/v1/telemetry/otlp";
 const device = "5c0d0000-0000-4000-8000-000000000031";
-const scopedTool = "mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact";
+const scopedTool = "mcp__plugin_sabia_sabia-artifacts__report_artifact";
 const acceptance = { report_id: "5c0d0000-0000-4000-8000-000000000050", output_id: "5c0d0000-0000-4000-8000-000000000051", receipt_status: "accepted", receipt_proof: proof };
 const event = { hook_event_name: "PostToolUse", session_id: "00000000-0000-4000-a000-000000000018", transcript_path: "/do-not-read", cwd: "/workspace",
   tool_name: scopedTool, tool_use_id: "toolu_01ReportCall", tool_input: { session_id: "agent-claim", artifact: { external_id: "sabia-partners/dashboard-langfuse#84" } },
@@ -43,7 +43,7 @@ describe("Claude Code report binding", () => {
     expect(nativeBinding({ ...event, tool_response: `Quoted: ${JSON.stringify(acceptance)}` }, device)).toBeNull();
   });
   it("ignores other tools, lookups, failures, duplicates and missing coordinates", () => {
-    expect(nativeBinding({ ...event, tool_name: "mcp__plugin_sabia-claude-code-otel_sabia-artifacts__get_artifact_report" }, device)).toBeNull();
+    expect(nativeBinding({ ...event, tool_name: "mcp__plugin_sabia_sabia-artifacts__get_artifact_report" }, device)).toBeNull();
     expect(nativeBinding({ ...event, tool_name: "mcp__plugin_other_sabia-artifacts__report_artifact" }, device)).toBeNull();
     expect(nativeBinding({ ...event, tool_name: "Bash" }, device)).toBeNull();
     expect(nativeBinding({ ...event, hook_event_name: "PreToolUse" }, device)).toBeNull();

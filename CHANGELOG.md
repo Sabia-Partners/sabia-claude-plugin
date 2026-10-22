@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0 (unreleased)
+
+Prepares the plugin for Anthropic's plugin directory.
+
+- **Renamed to `sabia`** (shown as "Sabia"). `sabia-claude-code-otel` read as one of Anthropic's own names. The marketplace's `renames` entry moves existing installs. The native usage connection lives in `~/.claude` and is kept; Output Reporting needs one new `/mcp` sign-in, now as `plugin:sabia:sabia-artifacts`. Claude Code keeps each plugin's data directory under its id, so report bindings still queued under the old name and the cached connector contract are left behind; the contract is fetched again, and a binding that never reached Sabia only loses its link to the session's tokens.
+- **The Claude Code plugin now lives in `plugins/sabia`**, so the directory lists only the plugin, apart from the Desktop extension and its Cowork log reader. The marketplace entry points at `./plugins/sabia`.
+- **Raw capture is gone from the plugin.** `--raw-capture` is refused, a raw-capture grant on the key is ignored, and a device an earlier version set up for prompt export is narrowed back to token counts at its next session start. The plugin never exports prompt text or assistant responses.
+- Directory listing fields in `plugin.json`: icon, documentation, support, privacy policy and terms links. The manifest no longer repeats the default `hooks`, `skills` and `mcpServers` locations.
+- The plugin README lists every process the plugin runs, every request it makes and every file it writes.
+- Contact address is `hello@sabiapartners.ca` everywhere; `sabiapartners.com` does not exist. The Desktop extension's privacy link pointed at a page that returned 404 and now points at `sabiapartners.ca/legal/privacy`.
+
 ## 0.5.0
 
 - Rename the reporting feature to Output Reporting and clarify completed actions on durable Artifacts. Tool names, installed identity, OAuth grants and reporting behavior stay compatible (dashboard-langfuse#182).

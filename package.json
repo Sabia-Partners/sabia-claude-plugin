@@ -1,6 +1,6 @@
 {
   "name": "sabia-claude-plugin",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,7 +10,7 @@
   },
   "scripts": {
     "test": "vitest run",
-    "check": "node --check scripts/sabia.mjs && node --check scripts/sabia-http.mjs && node --check scripts/sabia-report-binding.mjs && node --check scripts/sabia-connector-hook.mjs && node --check cowork/scripts/sabia.mjs && node --check cowork/scripts/sabia-http.mjs && node --check cowork/scripts/cowork-local.mjs && node --check desktop-extension/server/index.mjs && node --check scripts/pack-desktop-extension.mjs",
+    "check": "node --check plugins/sabia/scripts/sabia.mjs && node --check plugins/sabia/scripts/sabia-http.mjs && node --check plugins/sabia/scripts/sabia-report-binding.mjs && node --check plugins/sabia/scripts/sabia-connector-hook.mjs && node --check cowork/scripts/sabia.mjs && node --check cowork/scripts/sabia-http.mjs && node --check cowork/scripts/cowork-local.mjs && node --check desktop-extension/server/index.mjs && node --check scripts/pack-desktop-extension.mjs",
     "build:extension": "node scripts/pack-desktop-extension.mjs"
   },
   "devDependencies": {
