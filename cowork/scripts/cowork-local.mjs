@@ -8,8 +8,13 @@
 //
 //   <Claude app data>/local-agent-mode-sessions/<account>/<org>/local_<id>/audit.jsonl
 //
-// Tokens come from each turn's `result` line, whose `modelUsage` holds that
-// turn's totals per model, subagents included. The `usage` on `assistant`
+// Tokens come from each turn's `result` line, whose `modelUsage` holds totals
+// per model, subagents included. Those totals usually cover only that turn,
+// but Claude Code can start a turn from the previous turn's totals: a resumed
+// session restores them (seen from Claude Code 2.1.288), and a queued
+// follow-up continues them. A turn that carries the previous totals over is
+// sent as the difference, so every token is counted once (see `turnUsage`).
+// The `usage` on `assistant`
 // lines is a snapshot taken as the response starts streaming: on real logs it
 // under-reports output about thirtyfold, so it is never summed. `assistant`
 // lines are used only to count distinct calls (message ids) per model, which
@@ -77,9 +82,10 @@ async function directories(path) {
 
 /**
  * Reads an audit log from `cursor.offset` and returns the new events, the
- * byte offset after the last complete line, and the updated recent ids. A
- * final line without a newline may still be being written and is left for
- * the next run.
+ * byte offset after the last complete line, and the updated recent ids and
+ * usage baselines. A final line without a newline may still be being written
+ * and is left for the next run. The same cursor always yields the same
+ * events, so a run that fails before saving its cursor resends them unchanged.
  */
 export async function readSessionEvents(auditPath, cursor = {}, { content = false } = {}) {
   const recent = new Set(cursor.recentMessageIds ?? []);
@@ -91,23 +97,18 @@ export async function readSessionEvents(auditPath, cursor = {}, { content = fals
   let sequence = cursor.sequence ?? 0;
   const size = (await stat(auditPath)).size;
   if (offset > size) offset = 0; // the file was replaced; start over
+  // A cursor saved before baselines existed rebuilds them from the part
+  // already sent, without sending it again.
+  const usage =
+    offset === 0
+      ? {}
+      : cursor.usage
+        ? structuredClone(cursor.usage)
+        : await usageBaselinesUntil(auditPath, offset);
 
-  const lines = createInterface({
-    input: createReadStream(auditPath, { start: offset, encoding: "utf8" }),
-    crlfDelay: Infinity,
-  });
-  for await (const line of lines) {
-    const lineBytes = Buffer.byteLength(line, "utf8") + 1;
-    if (offset + lineBytes > size) break;
-    offset += lineBytes;
-
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    for (const event of eventsFromEntry(entry, { content, recent, toolCalls, pendingCalls })) {
+  for await (const { entry, end } of completeEntries(auditPath, offset, size)) {
+    offset = end;
+    for (const event of eventsFromEntry(entry, { content, recent, toolCalls, pendingCalls, usage })) {
       sequence += 1;
       events.push({ ...event, sequence: event.sequence ?? String(sequence) });
     }
@@ -119,13 +120,52 @@ export async function readSessionEvents(auditPath, cursor = {}, { content = fals
       sequence,
       recentMessageIds: [...recent].slice(-RECENT_IDS_PER_FILE),
       pendingCalls,
+      usage,
     },
   };
 }
 
+/** Each complete JSON line between two byte offsets, with the offset after it. */
+async function* completeEntries(auditPath, start, size) {
+  const input = createReadStream(auditPath, { start, encoding: "utf8" });
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  let offset = start;
+  try {
+    for await (const line of lines) {
+      const lineBytes = Buffer.byteLength(line, "utf8") + 1;
+      if (offset + lineBytes > size) break;
+      offset += lineBytes;
+      let entry;
+      try {
+        entry = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      yield { entry, end: offset };
+    }
+  } finally {
+    lines.close();
+    input.destroy();
+  }
+}
+
+async function usageBaselinesUntil(auditPath, offset) {
+  const usage = {};
+  const context = { content: false, recent: new Set(), toolCalls: new Map(), pendingCalls: {}, usage };
+  for await (const { entry } of completeEntries(auditPath, 0, offset)) eventsFromEntry(entry, context);
+  return usage;
+}
+
 /** The events one audit line contributes. Exported for tests. */
-export function eventsFromEntry(entry, { content, recent, toolCalls, pendingCalls = {} }) {
+export function eventsFromEntry(entry, { content, recent, toolCalls, pendingCalls = {}, usage = {} }) {
   if (!entry || typeof entry !== "object") return [];
+  if (entry.type === "system" && entry.subtype === "init" && typeof entry.model === "string") {
+    // The session's main model, whose own share of a turn `result.usage`
+    // reports, and the Claude Code version running it.
+    const key = sessionKeyOf(entry);
+    const version = typeof entry.claude_code_version === "string" ? entry.claude_code_version : undefined;
+    usage[key] = { ...usage[key], model: entry.model, version };
+  }
   const occurredAtMs = Date.parse(entry.timestamp ?? entry._audit_timestamp ?? "");
   if (!Number.isFinite(occurredAtMs)) return [];
   const sessionId = typeof entry.session_id === "string" ? entry.session_id : null;
@@ -134,10 +174,15 @@ export function eventsFromEntry(entry, { content, recent, toolCalls, pendingCall
 
   if (entry.type === "result" && typeof entry.uuid === "string" && !recent.has(entry.uuid)) {
     recent.add(entry.uuid);
-    const modelUsage =
-      entry.modelUsage && typeof entry.modelUsage === "object" ? entry.modelUsage : {};
-    for (const [model, usage] of Object.entries(modelUsage)) {
-      const tokens = tokensOf(usage);
+    const key = sessionKeyOf(entry);
+    const last = usage[key]?.last;
+    // A result at or before the last one counted was already sent: a replayed
+    // line whose id fell out of the recent ids must not move the baseline.
+    const replayed = last && (entry.uuid === last.uuid || occurredAtMs < last.atMs);
+    const { added, baseline } = replayed ? { added: {} } : turnUsage(entry, usage[key]);
+    if (!replayed) usage[key] = { ...baseline, last: { uuid: entry.uuid, atMs: occurredAtMs } };
+    for (const [model, counts] of Object.entries(added)) {
+      const tokens = tokensOf(counts);
       if (!tokens) continue;
       events.push({
         name: "api_request",
@@ -213,14 +258,95 @@ export function eventsFromEntry(entry, { content, recent, toolCalls, pendingCall
   return events;
 }
 
-/** A turn's totals for one model, from `result.modelUsage[model]`. */
-function tokensOf(usage) {
-  if (!usage || typeof usage !== "object") return null;
+const TOKEN_CLASSES = [
+  ["inputTokens", "input_tokens"],
+  ["outputTokens", "output_tokens"],
+  ["cacheReadInputTokens", "cache_read_input_tokens"],
+  ["cacheCreationInputTokens", "cache_creation_input_tokens"],
+];
+const NO_TOKENS = TOKEN_CLASSES.map(() => 0);
+
+function sessionKeyOf(entry) {
+  return typeof entry.session_id === "string" ? entry.session_id : "";
+}
+
+/** The first Claude Code version seen restoring a resumed session's totals. */
+const RESTORES_TOTALS_FROM = [2, 1, 288];
+
+/**
+ * The tokens one result adds, per model, and the session's next baseline.
+ *
+ * A turn carries the previous totals over when its main model grew by exactly
+ * what `result.usage` (the main thread's own share of this turn) reports, and
+ * is fresh when the main model holds exactly that share. When a subagent also
+ * used the main model, neither test can pass and the tokens alone cannot tell
+ * the two apart (the log does not record subagent calls): such a turn is
+ * carried if a model it did not use came back with exactly the previous
+ * totals, or if it ran on a Claude Code version known to restore totals. A turn whose totals went
+ * down anywhere is a fresh start. Totals never go below the baseline in a
+ * carried turn, so no difference is negative.
+ */
+function turnUsage(entry, baseline = {}) {
+  const totals = {};
+  const modelUsage = entry.modelUsage && typeof entry.modelUsage === "object" ? entry.modelUsage : {};
+  for (const [model, usage] of Object.entries(modelUsage)) {
+    if (usage && typeof usage === "object") {
+      totals[model] = TOKEN_CLASSES.map(([field]) => count(usage[field]));
+    }
+  }
+  // A turn without model calls says nothing about the running totals.
+  if (Object.keys(totals).length === 0) return { added: {}, baseline };
+
+  const carried = carriesOver(entry, totals, baseline);
+  const added = {};
+  for (const [model, counts] of Object.entries(totals)) {
+    const before = carried ? (baseline.totals[model] ?? NO_TOKENS) : NO_TOKENS;
+    added[model] = counts.map((value, index) => value - before[index]);
+  }
+  const { model, version } = baseline;
+  return { added, baseline: { model, version, totals } };
+}
+
+function carriesOver(entry, totals, baseline) {
+  const previous = baseline.totals;
+  if (!previous) return false;
+  const grew = Object.entries(previous).every(
+    ([model, before]) => totals[model] && totals[model].every((value, index) => value >= before[index]),
+  );
+  if (!grew) return false;
+
+  const own = TOKEN_CLASSES.map(([, field]) => count(entry.usage?.[field]));
+  const main = totals[baseline.model] ?? NO_TOKENS;
+  const mainBefore = previous[baseline.model] ?? NO_TOKENS;
+  if (mainBefore.some((value) => value > 0)) {
+    if (main.every((value, index) => value - mainBefore[index] === own[index])) return true;
+    // Only a fresh turn can hold no more than its own share.
+    if (main.every((value, index) => value === own[index])) return false;
+  }
+  const unchanged = Object.entries(previous).some(
+    ([model, before]) =>
+      before.some((value) => value > 0) && totals[model].every((value, index) => value === before[index]),
+  );
+  return unchanged || restoresTotals(baseline.version);
+}
+
+function restoresTotals(version) {
+  const parts = typeof version === "string" ? version.split(".").map(Number) : [];
+  if (parts.length < 3 || parts.some((part) => !Number.isInteger(part))) return false;
+  for (const [index, part] of RESTORES_TOTALS_FROM.entries()) {
+    if (parts[index] !== part) return parts[index] > part;
+  }
+  return true;
+}
+
+/** One model's tokens for a turn, as the four counts `turnUsage` returns. */
+function tokensOf(counts) {
+  const [input, output, cacheRead, cacheCreation] = counts;
   const tokens = {
-    input_tokens: count(usage.inputTokens),
-    output_tokens: count(usage.outputTokens),
-    cache_read_tokens: count(usage.cacheReadInputTokens),
-    cache_creation_tokens: count(usage.cacheCreationInputTokens),
+    input_tokens: input,
+    output_tokens: output,
+    cache_read_tokens: cacheRead,
+    cache_creation_tokens: cacheCreation,
   };
   return Object.values(tokens).some((value) => value > 0) ? tokens : null;
 }
