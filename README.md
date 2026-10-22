@@ -155,8 +155,8 @@ set, and in `~/.claude` otherwise.
 
 1. `node scripts/sabia.mjs disconnect` revokes the native usage key and
    restores whatever the managed variables held before.
-2. `/mcp` → `sabia-artifacts` → *Clear authentication* disconnects reporting on
-   this machine. Revoke it for good in Sabia → Settings → Members → Details → Output Reporting.
+2. `/mcp` → `plugin:sabia:sabia-artifacts` → *Clear authentication* disconnects reporting on
+   this machine. Revoke it for good in Sabia → Settings → Connected Tools → Manage.
 3. `/plugin uninstall sabia@sabia`.
 
 Records Sabia already accepted stay in your workspace.

@@ -1,7 +1,7 @@
 # Setting up Sabia for Claude Code
 
-You need Claude Code with Node 22 or newer, and a Sabia workspace you can sign
-in to. The two connections below are independent. Set up either one, or both.
+You need Claude Code 2.1.81 or later with Node 22 or newer, and a Sabia
+workspace you can sign in to. The two connections below are independent. Set up either one, or both.
 
 ## 1. Install
 
