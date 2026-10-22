@@ -38,21 +38,23 @@ functionality or requested presentation structure.
 In Claude Code the producing operation is usually a tool result you can read:
 
 - `gh pr create` or `gh issue create` printed the new URL: `create` on
-  `github`, with the actual `owner/repository#number`. A pull request review or
-  comment that printed its URL is an `update` on that pull request. A `gh`
-  call that exited 0 but printed nothing identifiable is not reportable.
-- A commit pushed to a remote is `publish` on `github` only once the push
-  succeeded and the commit SHA is known; a local commit is not.
-- A Google Doc, Sheet or Slides file created or revised through a connected
-  Drive tool: `create` or `update` on `google_drive`, one Artifact ID across
-  both. Use the file ID from the tool result, never from the title.
-- A message a connected Slack tool sent: `send` on `slack`, only after the
-  provider accepted it. A draft or a preview is not a send.
-- A site or page a deploy tool published: `publish` on `web`, only after the
-  publication succeeded, never while the deployment is pending.
-- A generated PDF, image, archive or other file the user asked to receive:
-  `deliver` as `file`, using the actual host reference, availability
-  `host_local`.
+  `github`. A pull request review that printed its URL is `review` on that pull
+  request, and a comment is `comment`; a material change to the pull request or
+  issue itself is `update`. A `gh` call that exited 0 but printed nothing
+  identifiable is not reportable.
+- A commit pushed to a remote is `publish` of a `github` `commit`, only once
+  the push succeeded and the commit SHA is known; a local commit is not.
+- A Google Doc, Sheet, Slides or Drive file created or revised through a
+  connected Drive tool: `create` or `update` on `google_drive` (`comment`,
+  `add_sheet` and `add_slide` where they apply), one Artifact across them.
+- A Linear issue created, changed or commented on through a connected Linear
+  tool: `create`, `update` or `comment` on `linear`.
+- A document, spreadsheet, presentation or other file the user asked to
+  receive, written on this computer: `create` or `update` on `host`, or
+  `deliver` of a `file`.
+
+Slack messages, web publications and email cannot be reported yet; do not ask
+the contract about them.
 
 Do not report reads, searches, plans, promises, failed or cancelled writes,
 ordinary answers with no identifiable deliverable, no-op saves or autosaves.
@@ -67,46 +69,49 @@ authorize producing, publishing or sending anything on its own.
 ## Report construction
 
 First call `get_reporting_contract` with `source_application` `claude_code` and
-the operation's `source_system`, `artifact_type` and `action`. It says whether
-that combination can be reported and returns the input schema, the identity and
-evidence rules, the current `contract_version` and `configuration_revision`,
-and an example. If it is unsupported or disabled, stop: tell the user in one
-sentence and do not report another way. Otherwise call `report_artifact_v3`
-with exactly what the contract describes.
+the operation's `source_system`, `artifact_type` and `action`. It returns the
+input schema, the identity and evidence rules, the current `contract_version`
+and `configuration_revision`, the authorized `artifact_scopes`, and an example.
+Act on its `status`:
+
+- `available`: call `report_artifact_v3` with exactly what the contract
+  describes. Where this skill and the contract differ, the contract wins.
+- `incompatible`: ask for the contract once more, then report.
+- `unsupported`, `not_selected` or `disabled`: stop. Tell the user in one
+  sentence and do not report another way.
 
 Mint a stable `event_id` once the operation has succeeded and keep it with the
 report; reuse it and the identical request for every retry.
 `source_application` is `claude_code`. The Artifact's source system (`github`,
-`google_drive`, `host` and so on) is where the object lives, not the
-application that produced it.
-The service fixes the authenticated organization, reporter and collection
-method `skill_tool`; do not send credentials or identifiers for them.
+`google_drive`, `linear`, `host`) is where the object lives, not the
+application that produced it. The service fixes the authenticated organization,
+reporter and collection method `skill_tool`; do not send credentials or
+identifiers for them.
 
-Where the guidance below differs from the contract, the contract wins.
+Use actual identities from the successful operation. Never infer one from a
+title or manufacture a URL, ID or scope:
 
-Use actual provider identities from the successful operation. Do not infer an
-identity from a title or manufacture a URL. For GitHub, `account_id` is the
-owner, `workspace_id` the repository, and `external_id` the number or full
-`owner/repository#number`; a contradictory URL, repository or number is
-rejected. For Google Drive, `account_id` is the authorized Google connection
-and `external_id` the Drive file ID. If scope cannot be established, leave the
-Artifact null rather than guessing: an unassociated Output is still a record of
-the delivery.
+- GitHub: the object's URL, or `owner`, `repository` and `number` (for a
+  commit, `owner`, `repository` and the full `commit_sha`).
+- Google Drive: the contract's exact `scope_ref` plus the `file_id` or URL from
+  the tool result.
+- Linear: the contract's exact `scope_ref` plus the issue `identifier` (such as
+  `ENG-123`) or its URL, and `comment_id` for a comment.
+- Host: the file's absolute `path` and a stable `workspace_id` for the
+  workspace it lives in, such as the repository name. Keep paths non-public and
+  never fetch one remotely.
 
-For host files, take the authenticated `artifact_account_id` from
-`get_reporting_context` and use the actual host file or download identity.
-Keep paths non-public and availability `host_local` or `temporary`. Do not
-fetch a host path remotely or claim permanent storage.
+If the identity or the exact scope is unresolved, including when
+`artifact_scope_status` is `unavailable` or `ambiguous`, send `artifact` as
+null. The report is still kept, as an unresolved Output.
 
 In `evidence`, use basis `tool_success` (`host_delivery` for a file you
 delivered on the host) and exactly one reference the producing operation
-returned: a provider event ID, a revision ID such as a pushed commit
-SHA, or the producing tool call's reference. A read or lookup never counts.
-Never include file content, transcripts, prompt or response text, credentials, tokens or complete
-tool payloads. Use a short nullable title. Secret-bearing URLs must not be
-sent; if an exact safe reference is unavailable, leave the reference null —
-the Artifact identity can still be supplied without one. For unsupported
-reference schemes, keep the Artifact null rather than coercing the type.
+returned: a provider event ID, a revision ID such as a pushed commit SHA, or
+the producing tool call's reference. A read or lookup never counts. Never
+include file content, transcripts, prompt or response text, credentials,
+tokens, secret-bearing URLs or complete tool payloads. Use a short nullable
+title.
 
 ## Context and usage
 

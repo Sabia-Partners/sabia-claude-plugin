@@ -77,6 +77,12 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(skill).toContain("First call `get_reporting_contract`");
     expect(skill).toMatch(/Do not use\s+`report_artifact`:/);
     expect(skill).not.toContain("schema version 2");
+    // v3 identities and actions: a review is not an update, Drive and Linear need
+    // the contract's scope_ref, and unsupported sources are not reported at all.
+    expect(skill).toMatch(/review that printed its URL is `review`/);
+    expect(skill).toContain("exact `scope_ref`");
+    expect(skill).toMatch(/Slack messages, web publications and email cannot be reported/);
+    expect(skill).not.toMatch(/`send` on `slack`|artifact_account_id|availability `host_local`/);
     expect(skill).toMatch(/`source_application` is\s+`claude_code`/);
     expect(skill).toContain("original `event_id`");
     expect(skill).toContain("Keep every `usage` value null");
