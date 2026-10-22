@@ -157,17 +157,18 @@ describe("readSessionEvents", () => {
 type Counts = [input: number, output: number, cacheRead: number, cacheCreation: number];
 const opus = "claude-opus-5";
 const haiku = "claude-haiku-4-5";
-const init = (session = "cli-1") => ({ type: "system", subtype: "init", session_id: session, model: opus, _audit_timestamp: at(0) });
+const init = (session = "cli-1", { model = opus, version = "2.1.288" } = {}) => ({
+  type: "system", subtype: "init", session_id: session, model, claude_code_version: version, _audit_timestamp: at(0),
+});
 function turn(
   uuid: string,
   second: number,
   totals: Record<string, Counts>,
   own: Counts,
-  { session = "cli-1", apiMs = 1_000, wallMs = 2_000 } = {},
+  { session = "cli-1" } = {},
 ) {
   return {
     type: "result", uuid, session_id: session, _audit_timestamp: at(second),
-    duration_ms: wallMs, duration_api_ms: apiMs,
     usage: { input_tokens: own[0], output_tokens: own[1], cache_read_input_tokens: own[2], cache_creation_input_tokens: own[3] },
     modelUsage: Object.fromEntries(
       Object.entries(totals).map(([model, [input, output, cacheRead, cacheCreation]]) => [
@@ -259,28 +260,47 @@ describe("turns that carry the previous totals over", () => {
     expect(tokens.flat().every((value) => (value as number) >= 0)).toBe(true);
   });
 
-  it("counts a subagent on the main model once in a carried turn", async () => {
-    // The main model grew by more than its own share: a subagent used it too.
-    // Carried only because the previous turn was, every total grew, and the
-    // API time grew by no more than this turn took.
+  it("counts a subagent on the main model once when a resumed turn carries the totals over", async () => {
+    // The main model grew by more than its own share: a subagent used it too,
+    // so only the Claude Code version can say whether the totals carried over.
     await write([
       init(),
-      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50], { apiMs: 1_000, wallMs: 1_200 }),
-      turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50], { apiMs: 2_000, wallMs: 1_100 }),
-      turn("r3", 3, { [opus]: [35, 500, 3500, 300] }, [5, 100, 500, 50], { apiMs: 3_500, wallMs: 1_600 }),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      init(),
+      turn("r2", 2, { [opus]: [18, 250, 1700, 120] }, [5, 100, 500, 50]),
+      init(),
+      turn("r3", 3, { [opus]: [33, 550, 3200, 320] }, [5, 100, 500, 50]),
     ]);
 
-    expect(sent((await readSessionEvents(auditPath)).events).at(-1)!.tokens).toEqual([15, 300, 1500, 200]);
+    expect(sent((await readSessionEvents(auditPath)).events).map((event) => event.tokens)).toEqual([
+      [10, 100, 1000, 50],
+      [8, 150, 700, 70],
+      [15, 300, 1500, 200],
+    ]);
   });
 
-  it("sends that same shape whole when nothing before it was carried", async () => {
+  it("sends that same shape whole on a Claude Code version that does not restore totals", async () => {
     await write([
-      init(),
-      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50], { apiMs: 1_000, wallMs: 1_200 }),
-      turn("r2", 2, { [opus]: [25, 400, 2500, 250] }, [5, 100, 500, 50], { apiMs: 2_500, wallMs: 1_600 }),
+      init("cli-1", { version: "2.1.237" }),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      turn("r2", 2, { [opus]: [25, 400, 2500, 250] }, [5, 100, 500, 50]),
     ]);
 
     expect(sent((await readSessionEvents(auditPath)).events).at(-1)!.tokens).toEqual([25, 400, 2500, 250]);
+  });
+
+  it("recognises a carried turn by a model it did not use, even when the main model changed", async () => {
+    await write([
+      init("cli-1", { version: "2.1.237" }),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      init("cli-1", { model: "claude-sonnet-5", version: "2.1.237" }),
+      turn("r2", 2, { [opus]: [10, 100, 1000, 50], "claude-sonnet-5": [4, 40, 400, 20] }, [4, 40, 400, 20]),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events)).toEqual([
+      { sequence: `r1:${opus}`, tokens: [10, 100, 1000, 50] },
+      { sequence: "r2:claude-sonnet-5", tokens: [4, 40, 400, 20] },
+    ]);
   });
 
   it("keeps a separate baseline per session in one log", async () => {
@@ -325,6 +345,22 @@ describe("turns that carry the previous totals over", () => {
     const replay = await readSessionEvents(auditPath, once.cursor);
     expect(replay.events).toEqual([]);
     expect(replay.cursor.usage).toEqual(once.cursor.usage);
+  });
+
+  it("does not let a replayed result move the baseline after its id left the recent ids", async () => {
+    const r1 = turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]);
+    await write([init(), r1, turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50])]);
+    const first = await readSessionEvents(auditPath);
+    // Hundreds of later messages push both result ids out of the recent ids.
+    const forgotten = { ...first.cursor, recentMessageIds: [] };
+
+    await appendFile(
+      auditPath,
+      [r1, turn("r3", 3, { [opus]: [25, 300, 2500, 150] }, [5, 100, 500, 50])].map((entry) => `${JSON.stringify(entry)}\n`).join(""),
+    );
+    const next = await readSessionEvents(auditPath, forgotten);
+
+    expect(sent(next.events)).toEqual([{ sequence: `r3:${opus}`, tokens: [5, 100, 500, 50] }]);
   });
 });
 
