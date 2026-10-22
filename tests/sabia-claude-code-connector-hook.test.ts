@@ -12,7 +12,7 @@ import {
   connectorEnvelope, isMutation, loadConnectorContract, MUTATIONS, parseConnectorContract, parseIdentityPath,
   PRIMARY_IDENTITY_KEYS as PLUGIN_PRIMARY_KEYS, projectMutationIdentity as pluginProject, retryMarkerPath, runConnectorHook,
   VENDORED_CONTRACT, winningIdentityPathOperations,
-} from "../scripts/sabia-connector-hook.mjs";
+} from "../plugins/sabia/scripts/sabia-connector-hook.mjs";
 
 // The hook reads tool_name, tool_use_id, session_id, tool_input and
 // tool_response, reduces the last two to the identity allowlist, and posts
@@ -92,7 +92,7 @@ describe("Claude Code connector hook", () => {
     expect(connectorEnvelope({ ...driveCreate, tool_name: "mcp__google_drive__search_files" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, hook_event_name: "PreToolUse" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, tool_response: { isError: true, content: driveCreate.tool_response } })).toBeNull();
-    expect(connectorEnvelope({ ...driveCreate, tool_name: "mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact" })).toBeNull();
+    expect(connectorEnvelope({ ...driveCreate, tool_name: "mcp__plugin_sabia_sabia-artifacts__report_artifact" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, tool_name: "Write" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, tool_use_id: undefined })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, session_id: "" })).toBeNull();
@@ -536,7 +536,7 @@ describe("fetching the contract", () => {
     await settings({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: local, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}`, OTEL_TRACES_EXPORTER: "otlp" });
     await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: "org", endpoint: local }));
     const started = Date.now();
-    const child = promisify(execFile)(process.execPath, ["scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "" }, timeout: 10_000 });
+    const child = promisify(execFile)(process.execPath, ["plugins/sabia/scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "" }, timeout: 10_000 });
     child.child.stdin!.end(JSON.stringify({ ...driveCreate, tool_name: "mcp__github__get_pull_request" }));
     const { stdout, stderr } = await child;
     expect(Date.now() - started).toBeLessThan(3000);
@@ -553,7 +553,7 @@ describe("fetching the contract", () => {
       await settings({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: local, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}`, OTEL_TRACES_EXPORTER: "otlp" });
       await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: "org", endpoint: local }));
       const started = Date.now();
-      const child = promisify(execFile)(process.execPath, ["scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "", TMPDIR: directory }, timeout: 12_000 });
+      const child = promisify(execFile)(process.execPath, ["plugins/sabia/scripts/sabia-connector-hook.mjs"], { env: { ...process.env, CLAUDE_CONFIG_DIR: directory, CLAUDE_PLUGIN_DATA: "", TMPDIR: directory }, timeout: 12_000 });
       child.child.stdin!.end(JSON.stringify(driveCreate));
       const { stdout, stderr } = await child;
       const elapsed = Date.now() - started;

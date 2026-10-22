@@ -8,10 +8,10 @@ import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { approvedHandoff } from "../scripts/sabia-http.mjs";
+import { approvedHandoff } from "../plugins/sabia/scripts/sabia-http.mjs";
 
 const run = promisify(execFile);
-const pluginRoot = process.cwd();
+const pluginRoot = join(process.cwd(), "plugins", "sabia");
 const scriptPath = join(pluginRoot, "scripts/sabia.mjs");
 
 const ingestionKey = `sbia_ing_0123456789ab_${"A".repeat(43)}`;
@@ -60,7 +60,7 @@ describe("Sabia Claude Code plugin production connection", () => {
     expect(script).toContain(
       'const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";',
     );
-    expect(manifest.homepage).toBe("https://app2.sabiapartners.ca");
+    expect(manifest.homepage).toBe("https://sabiapartners.ca");
   });
 
   it("handles disconnect redirects the same way as connect", async () => {
@@ -83,22 +83,17 @@ describe("Sabia Claude Code plugin production connection", () => {
     ).toThrow("Sabia returned an invalid approval response");
   });
 
-  it("requires a logs endpoint only when raw capture was requested", () => {
-    const metricsOnlyApproval = {
-      status: "approved",
-      organizationId: "org",
-      organizationName: "Sabia",
-      ingestionKeyId: "key",
-      ingestionKey,
-      otlpMetricsEndpoint: endpoint,
-    };
-
-    expect(() => approvedHandoff(metricsOnlyApproval)).not.toThrow();
-    // Configuring a logs exporter against `undefined` would export prompt text
-    // to a URL that does not exist, and look connected while doing it.
-    expect(() => approvedHandoff(metricsOnlyApproval, true)).toThrow(
-      "Sabia returned an invalid approval response",
-    );
+  it("accepts an approval without a logs endpoint: it never configures a logs exporter", () => {
+    expect(() =>
+      approvedHandoff({
+        status: "approved",
+        organizationId: "org",
+        organizationName: "Sabia",
+        ingestionKeyId: "key",
+        ingestionKey,
+        otlpMetricsEndpoint: endpoint,
+      }),
+    ).not.toThrow();
   });
 });
 
@@ -206,30 +201,23 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(stdout).not.toContain(ingestionKey);
   });
 
-  it("adds the event exporter and its gates only in raw-capture mode", async () => {
-    await sabia(
+  it("refuses --raw-capture and writes nothing", async () => {
+    const failure = await sabia(
       "configure",
       "--endpoint",
       endpoint,
       "--ingestion-key",
       ingestionKey,
       "--raw-capture",
+    ).then(
+      () => null,
+      (error: { code: number; stderr: string }) => error,
     );
 
-    const env = (await readSettings()).env ?? {};
-    expect(env.OTEL_LOGS_EXPORTER).toBe("otlp");
-    expect(env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL).toBe("http/json");
-    expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe(endpoint);
-    expect(env.OTEL_LOG_USER_PROMPTS).toBe("1");
-    expect(env.OTEL_LOG_TOOL_DETAILS).toBe("1");
-    // Traces were never asked for, and these two carry whole file contents and
-    // complete Messages API conversations — a separate privacy decision.
-    expect(env.OTEL_TRACES_EXPORTER).toBe("none");
-    expect(env.OTEL_LOG_TOOL_CONTENT).toBeUndefined();
-    expect(env.OTEL_LOG_RAW_API_BODIES).toBeUndefined();
-    // Metrics are unaffected: raw capture is additional, not instead.
-    expect(env.OTEL_METRICS_EXPORTER).toBe("otlp");
-    expect(env.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE).toBe("delta");
+    expect(failure?.code).toBe(1);
+    expect(failure?.stderr).toContain("never exports prompt text");
+    await expect(readFile(settingsPath, "utf8")).rejects.toThrow("ENOENT");
+    await expect(readFile(statePath, "utf8")).rejects.toThrow("ENOENT");
   });
 
   it("adds the trace exporter and its gates only for the tool-output grant", async () => {
@@ -281,19 +269,15 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(env.OTEL_LOG_TOOL_DETAILS).toBeUndefined();
   });
 
-  it("clears the event exporter when reconnecting without raw capture", async () => {
-    await sabia(
-      "configure",
-      "--endpoint",
-      endpoint,
-      "--ingestion-key",
-      ingestionKey,
-      "--raw-capture",
-    );
+  it("clears the prompt export an earlier version wrote when it reconfigures", async () => {
+    await configureWithExporters({ logs: "otlp", traces: "none" }, {
+      OTEL_EXPORTER_OTLP_LOGS_PROTOCOL: "http/json",
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: endpoint,
+      OTEL_LOG_USER_PROMPTS: "1",
+      OTEL_LOG_TOOL_DETAILS: "1",
+    });
     await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
 
-    // A downgrade that left these behind would keep shipping prompt text to a
-    // connection that no longer retains it.
     const env = (await readSettings()).env ?? {};
     expect(env.OTEL_LOGS_EXPORTER).toBe("none");
     expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
@@ -302,52 +286,26 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL).toBeUndefined();
   });
 
-  it("restores the user's own prompt-logging value after raw capture", async () => {
+  it("restores the user's own prompt-logging value on disconnect", async () => {
     await writeFile(
       settingsPath,
       JSON.stringify({ env: { OTEL_LOG_USER_PROMPTS: "0" } }),
     );
 
-    await sabia(
-      "configure",
-      "--endpoint",
-      endpoint,
-      "--ingestion-key",
-      ingestionKey,
-      "--raw-capture",
-    );
+    await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
     await sabia("disconnect", "--local-only");
 
     expect((await readSettings()).env?.OTEL_LOG_USER_PROMPTS).toBe("0");
   });
 
-  it("says which signals a raw-capture connection exports", async () => {
-    await sabia(
-      "configure",
-      "--endpoint",
-      endpoint,
-      "--ingestion-key",
-      ingestionKey,
-      "--raw-capture",
-    );
-
-    const { stdout } = await sabia("status");
-    expect(stdout).toMatch(/prompts, tool decisions, and token counts/i);
-    // Raw capture alone does not export result bodies; saying otherwise would
-    // overstate what left the machine.
-    expect(stdout).toMatch(/tool result bodies are not/i);
-    expect(stdout).not.toContain(ingestionKey);
-  });
-
   /**
-   * The two grants are independent, so status has to read both exporters.
-   * Checking only OTEL_LOGS_EXPORTER told a trace-only connection that no tool
-   * content was exported while it was busy exporting it.
+   * Sets the exporters by hand: `logs: "otlp"` is how a device an earlier
+   * version configured for prompt export looks.
    */
-  async function configureWithExporters(exporters: {
-    logs: "otlp" | "none";
-    traces: "otlp" | "none";
-  }) {
+  async function configureWithExporters(
+    exporters: { logs: "otlp" | "none"; traces: "otlp" | "none" },
+    extra: Record<string, string> = {},
+  ) {
     await sabia("configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey);
     const settings = await readSettings();
     await writeFile(
@@ -358,6 +316,7 @@ describe("Sabia Claude Code plugin settings management", () => {
           ...settings.env,
           OTEL_LOGS_EXPORTER: exporters.logs,
           OTEL_TRACES_EXPORTER: exporters.traces,
+          ...extra,
         },
       }),
     );
@@ -376,13 +335,13 @@ describe("Sabia Claude Code plugin settings management", () => {
     expect(stdout).toMatch(/prompt text and assistant responses are not/i);
   });
 
-  it("describes a combined connection as exporting both", async () => {
-    await configureWithExporters({ logs: "otlp", traces: "otlp" });
+  it("tells a device an earlier version set up for prompt export that it is still on", async () => {
+    await configureWithExporters({ logs: "otlp", traces: "none" });
 
     const { stdout } = await sabia("status");
 
-    expect(stdout).toMatch(/prompts, tool decisions, tool result bodies/i);
-    expect(stdout).not.toMatch(/are not exported/i);
+    expect(stdout).toMatch(/only token counts are exported/i);
+    expect(stdout).toContain("Prompt export set up by an earlier version is still on");
   });
 
   it("still reports a metrics-only connection as token counts alone", async () => {
@@ -469,7 +428,6 @@ describe("Sabia Claude Code plugin settings management", () => {
       expect(stdout).toContain("approve");
       expect(JSON.stringify(await readSettings())).toBe(before);
       expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toEqual({
-        rawCapture: false,
         traceCapture: true,
       });
       expect((await sabia("status")).stdout).toContain("Waiting for your approval: tool output");
@@ -510,7 +468,7 @@ describe("Sabia Claude Code plugin settings management", () => {
         "--ingestion-key",
         ingestionKey,
       );
-      grants = { rawCapture: true, traceCapture: false };
+      grants = { rawCapture: false, traceCapture: true };
       await sabia("sync", "--quiet");
       grants = { rawCapture: false, traceCapture: false };
       const before = JSON.stringify(await readSettings());
@@ -522,25 +480,40 @@ describe("Sabia Claude Code plugin settings management", () => {
       expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toBeUndefined();
     });
 
-    it("narrows one grant while holding another widened grant", async () => {
+    it("never applies or announces a raw-capture grant", async () => {
       await sabia(
         "configure",
         "--endpoint",
         `${serverEndpoint}/api/v1/telemetry/otlp`,
         "--ingestion-key",
         ingestionKey,
-        "--tool-output",
       );
+      const before = JSON.stringify(await readSettings());
+      grants = { rawCapture: true, traceCapture: false };
+
+      const sync = await sabia("sync", "--quiet");
+      const approve = await sabia("approve");
+
+      expect(sync.stdout).toBe("");
+      expect(approve.stdout).toContain("Nothing is waiting for approval");
+      expect(JSON.stringify(await readSettings())).toBe(before);
+      expect(JSON.parse(await readFile(statePath, "utf8")).pendingCapture).toBeUndefined();
+    });
+
+    it("turns off prompt export an earlier version set up, whatever the grant says", async () => {
+      await configureWithExporters({ logs: "otlp", traces: "none" }, {
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${serverEndpoint}/api/v1/telemetry/otlp`,
+        OTEL_LOG_USER_PROMPTS: "1",
+      });
       grants = { rawCapture: true, traceCapture: false };
 
       const { stdout } = await sabia("sync", "--quiet");
 
       const env = (await readSettings()).env ?? {};
-      expect(env.OTEL_TRACES_EXPORTER).toBe("none");
       expect(env.OTEL_LOGS_EXPORTER).toBe("none");
       expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
+      expect(env.OTEL_METRICS_EXPORTER).toBe("otlp");
       expect(stdout).toContain("updated this device's capture");
-      expect(stdout).toContain("asked to widen");
     });
 
     it("changes nothing when approval cannot reach Sabia", async () => {

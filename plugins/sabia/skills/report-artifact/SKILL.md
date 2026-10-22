@@ -13,7 +13,7 @@ alone does not qualify.
 Use the connected `report_artifact` tool after the producing operation has
 succeeded. The plugin bundles the server as `sabia-artifacts`, so Claude Code
 lists its tools under the scoped names
-`mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact`,
+`mcp__plugin_sabia_sabia-artifacts__report_artifact`,
 `…__get_artifact_report`, `…__get_reporting_context` and
 `…__begin_reporting_session`. This skill works through those hosted tools only:
 no shell, no Node process, no credential file, and nothing in the native OTel
@@ -22,7 +22,7 @@ independently through that skill and is never a substitute for a report.
 
 If the tools are missing or answer with an authorization error, the user has
 not connected Output Reporting yet: tell them to run `/mcp`, choose
-`plugin:sabia-claude-code-otel:sabia-artifacts`, sign in to Sabia and approve
+`plugin:sabia:sabia-artifacts`, sign in to Sabia and approve
 metadata sharing for their organization. Do not attempt the report another way.
 
 ## Qualifying operations

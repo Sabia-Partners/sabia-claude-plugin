@@ -1,0 +1,26 @@
+{
+  "name": "sabia",
+  "displayName": "Sabia",
+  "version": "0.6.0",
+  "description": "Sabia for Claude Code: use Output Reporting for completed work through Sabia's hosted MCP tools and connect native OpenTelemetry token usage, each with its own consent.",
+  "author": {
+    "name": "Sabia Partners",
+    "email": "hello@sabiapartners.ca",
+    "url": "https://sabiapartners.ca"
+  },
+  "homepage": "https://sabiapartners.ca",
+  "repository": "https://github.com/Sabia-Partners/sabia-claude-plugin",
+  "license": "MIT",
+  "keywords": [
+    "sabia",
+    "opentelemetry",
+    "usage",
+    "telemetry",
+    "artifacts"
+  ],
+  "icon": "./icon.png",
+  "documentationUrl": "https://github.com/Sabia-Partners/sabia-claude-plugin/blob/main/plugins/sabia/README.md",
+  "supportUrl": "https://sabiapartners.ca/contact",
+  "privacyPolicyUrl": "https://app2.sabiapartners.ca/privacy/claude-code",
+  "termsOfServiceUrl": "https://sabiapartners.ca/legal/terms"
+}

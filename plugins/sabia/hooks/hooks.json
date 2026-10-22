@@ -18,7 +18,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^mcp__(plugin_sabia-claude-code-otel_)?sabia-artifacts__report_artifact$",
+        "matcher": "^mcp__(plugin_sabia_)?sabia-artifacts__report_artifact$",
         "hooks": [
           {
             "type": "command",
