@@ -28,7 +28,9 @@ To check the connection, ask Claude for your Sabia status, or run
 
 The default connection sends token counts only. Tool output is a separate
 grant, described in the [README](README.md#opt-in-tool-output-grant). Ask for it
-only if you mean to share what it adds. Prompt text is never sent.
+only if you mean to share what it adds. The plugin never turns on prompt text;
+the README's [Prompt text](README.md#prompt-text) section explains why and what
+the setting is.
 
 ## 3. Connect Output Reporting
 

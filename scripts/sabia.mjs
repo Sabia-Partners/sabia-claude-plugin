@@ -32,17 +32,15 @@ const MANAGED_KEYS = [
   "OTEL_EXPORTER_OTLP_METRICS_PROTOCOL",
   "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT",
   "OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE",
-  // Never written: this plugin does not export Claude Code's log records,
-  // which carry prompt text. Still managed, so a device that an earlier
-  // version configured for prompt export has them cleared at its next sync,
-  // and disconnect restores whatever the user had before.
+  // Written only for the tool-output grant (SAB-81); managed either way so a
+  // reconnect without --tool-output stops the log and trace export instead of
+  // leaving it running against a connection that no longer accepts it.
+  // OTEL_LOG_USER_PROMPTS is deliberately not in this list: prompt text is a
+  // choice the person makes in their own settings, so this plugin never
+  // writes, clears or restores it.
   "OTEL_EXPORTER_OTLP_LOGS_PROTOCOL",
   "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
-  "OTEL_LOG_USER_PROMPTS",
   "OTEL_LOG_TOOL_DETAILS",
-  // Written only for the tool-output grant (SAB-81); managed either way so a
-  // reconnect without --tool-output stops the trace export instead of leaving
-  // it running against a connection that no longer accepts it.
   "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA",
   "OTEL_EXPORTER_OTLP_TRACES_PROTOCOL",
   "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
@@ -52,12 +50,46 @@ const MANAGED_KEYS = [
 ];
 
 /**
+ * Plugins before 0.6.0 managed OTEL_LOG_USER_PROMPTS: they wrote "1" under raw
+ * capture, removed it otherwise, and kept the user's own value in
+ * previousEnv. This version hands it back once, the first time it sees
+ * settings an older version managed: a value only Sabia could have left ("1",
+ * or the key removed) is replaced by what the user had before. A value the
+ * user has changed since stays. Either way the key leaves previousEnv, so it
+ * is never touched again. Returns whether anything changed.
+ */
+function releasePromptSetting(env, state) {
+  const previousEnv = plainObject(state?.previousEnv) ? state.previousEnv : null;
+  if (!previousEnv || !Object.hasOwn(previousEnv, PROMPT_SETTING)) return false;
+  const current = env[PROMPT_SETTING];
+  if (current === undefined || current === "1") {
+    const previous = previousEnv[PROMPT_SETTING];
+    if (typeof previous === "string") env[PROMPT_SETTING] = previous;
+    else delete env[PROMPT_SETTING];
+  }
+  delete previousEnv[PROMPT_SETTING];
+  return true;
+}
+
+/** Applies the release to the settings and state on disk; true when it did. */
+async function releasePromptSettingOnDisk() {
+  const [settings, state] = await Promise.all([readSettings(), readJson(statePath)]);
+  const env = plainObject(settings.env) ? { ...settings.env } : null;
+  if (!env || !state || !releasePromptSetting(env, state)) return false;
+  settings.env = env;
+  await writeSettings(settings);
+  await atomicWrite(statePath, JSON.stringify(state, null, 2) + "\n");
+  return true;
+}
+
+/**
  * Sabia's own key format, which is what makes the header a reliable ownership
  * marker: nothing but this plugin writes a `sbia_ing_` bearer token into Claude
  * Code's settings, so finding one is proof the block is ours to restore.
  */
 const INGESTION_KEY_PATTERN = /^sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43}$/;
 const MANAGED_HEADER_PATTERN = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
+const PROMPT_SETTING = "OTEL_LOG_USER_PROMPTS";
 
 const { command, options } = parseArguments(process.argv.slice(2));
 const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
@@ -125,7 +157,7 @@ async function connect() {
   );
   if (traceCapture) {
     process.stdout.write(
-      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents; MCP response bodies are not exported by the client today — and Sabia will keep a reduced per-tool extract.\n",
+      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents; MCP response bodies are not exported by the client today — and its tool events with their arguments, MCP tool names and skill names. Sabia will keep a reduced per-tool extract. Prompt text stays redacted.\n",
     );
   }
   process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
@@ -138,6 +170,7 @@ async function connect() {
   await installEnv({
     deviceId,
     metricsEndpoint: approved.otlpMetricsEndpoint,
+    logsEndpoint: approved.otlpLogsEndpoint ?? approved.otlpMetricsEndpoint,
     tracesEndpoint: new URL("/api/v1/telemetry/traces", baseUrl).toString(),
     ingestionKey: approved.ingestionKey,
     ingestionKeyId: approved.ingestionKeyId,
@@ -160,16 +193,16 @@ async function connect() {
  */
 function describeCapture({ traceCapture }) {
   if (traceCapture) {
-    return "Tool result bodies and token counts are exported, and Sabia keeps a reduced per-tool extract. Prompt text and assistant responses are not exported.";
+    return "Tool result bodies, tool events with their arguments and skill names, and token counts are exported, and Sabia keeps a reduced per-tool extract. Prompt text and assistant responses are not exported by this plugin.";
   }
   return "Only token counts are exported — prompts, responses, and tool content are not.";
 }
 
 /**
- * Raw capture (prompt text and complete log envelopes) is not part of this
- * plugin: Anthropic's directory policy rules out collecting conversation data
- * beyond what a feature needs. Refused out loud rather than ignored, so a
- * script that still passes the flag learns that nothing was asked for.
+ * Prompt text is not part of this plugin: Anthropic's directory policy rules
+ * out collecting conversation data beyond what a feature needs. Refused out
+ * loud rather than ignored, so a script that still passes the flag learns
+ * that nothing was asked for.
  */
 function refuseRawCapture() {
   if (options["raw-capture"]) {
@@ -199,6 +232,7 @@ async function configureHeadless() {
     // A headless caller has only the one URL to give. Traces have their own
     // route, derived from the same origin.
     metricsEndpoint: endpoint,
+    logsEndpoint: endpoint,
     tracesEndpoint: new URL("/api/v1/telemetry/traces", endpoint).toString(),
     ingestionKey,
     ingestionKeyId: null,
@@ -239,6 +273,7 @@ async function disconnect() {
     }
   }
 
+  if (state) releasePromptSetting(env, state);
   const previousEnv = plainObject(state?.previousEnv) ? state.previousEnv : {};
   for (const key of MANAGED_KEYS) {
     const value = previousEnv[key];
@@ -283,8 +318,13 @@ async function status() {
   process.stdout.write(
     `Exports: ${describeCapture({ traceCapture: env.OTEL_TRACES_EXPORTER === "otlp" })}\n`,
   );
-  if (env.OTEL_LOGS_EXPORTER === "otlp") {
-    process.stdout.write("Prompt export set up by an earlier version is still on; the next sync turns it off.\n");
+  if (currentCapture(env).logsMissing) {
+    process.stdout.write("Tool events are not exported yet: this device was set up before 0.6.1. Run approve to add them.\n");
+  }
+  if (env.OTEL_LOG_USER_PROMPTS === "1" && env.OTEL_LOGS_EXPORTER === "otlp") {
+    process.stdout.write(
+      "Prompt text is also exported, because OTEL_LOG_USER_PROMPTS is set in your Claude Code settings. Sabia keeps it only if your organization granted raw capture.\n",
+    );
   }
   if (state?.pendingCapture?.traceCapture) {
     process.stdout.write("Waiting for your approval: tool output. Run approve to accept.\n");
@@ -314,6 +354,11 @@ async function status() {
  */
 async function sync() {
   const quiet = Boolean(options.quiet);
+  if (await releasePromptSettingOnDisk()) {
+    process.stdout.write(
+      "Sabia no longer manages OTEL_LOG_USER_PROMPTS. An earlier version of the plugin had set it; your previous value is back. Prompt text is sent only if you set it yourself.\n",
+    );
+  }
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : null;
   if (!env || !isManaged(env)) {
@@ -327,12 +372,16 @@ async function sync() {
   if (!granted) return;
 
   const current = currentCapture(env);
-  // Prompt export is never part of the target, so a device an earlier version
-  // set up for it is narrowed here whatever the grant says.
   const next = { traceCapture: current.traceCapture && granted.traceCapture };
-  const pending = { traceCapture: granted.traceCapture && !current.traceCapture };
+  // A device set up before log export joined the tool-output grant exports
+  // less than the grant now covers, so it waits for approval like any other
+  // widening.
+  const pending = {
+    traceCapture: granted.traceCapture && (!current.traceCapture || current.logsMissing),
+  };
   const state = await readJson(statePath);
-  const narrowed = current.promptExport || next.traceCapture !== current.traceCapture;
+  // A log export left on without the tool-output grant is narrowed at once.
+  const narrowed = current.strayLogs || next.traceCapture !== current.traceCapture;
 
   if (narrowed) {
     await applyCapture(state, granted, next);
@@ -343,7 +392,7 @@ async function sync() {
 
   if (pending.traceCapture) {
     await recordPending(pending);
-    process.stdout.write(pendingNotice(state, granted));
+    process.stdout.write(pendingNotice(state, granted, { upgrade: current.traceCapture && current.logsMissing }));
     return;
   }
 
@@ -357,6 +406,7 @@ async function sync() {
  * request withdrawn in the app since the last session cannot be approved.
  */
 async function approve() {
+  await releasePromptSettingOnDisk();
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : null;
   if (!env || !isManaged(env)) {
@@ -369,7 +419,7 @@ async function approve() {
   const current = currentCapture(env);
   const target = { traceCapture: granted.traceCapture };
   const state = await readJson(statePath);
-  if (!current.promptExport && target.traceCapture === current.traceCapture) {
+  if (!current.strayLogs && !current.logsMissing && target.traceCapture === current.traceCapture) {
     if (state?.pendingCapture) await recordPending(null);
     process.stdout.write(`Nothing is waiting for approval. ${describeCapture(current)}\n`);
     return;
@@ -431,6 +481,8 @@ async function readGrants(env, { failOpen, quiet }) {
     traceCapture: granted.traceCapture === true,
     metricsEndpoint,
     token,
+    logsEndpoint:
+      typeof granted.otlpLogsEndpoint === "string" ? granted.otlpLogsEndpoint : metricsEndpoint,
     tracesEndpoint:
       typeof granted.tracesEndpoint === "string"
         ? granted.tracesEndpoint
@@ -439,10 +491,15 @@ async function readGrants(env, { failOpen, quiet }) {
 }
 
 function currentCapture(env) {
+  const traceCapture = env.OTEL_TRACES_EXPORTER === "otlp";
+  const logs = env.OTEL_LOGS_EXPORTER === "otlp";
   return {
-    // Only an earlier version wrote this; it is cleared at the next sync.
-    promptExport: env.OTEL_LOGS_EXPORTER === "otlp",
-    traceCapture: env.OTEL_TRACES_EXPORTER === "otlp",
+    traceCapture,
+    // Log export on without the tool-output grant: an earlier version's raw
+    // capture, or a hand edit.
+    strayLogs: logs && !traceCapture,
+    // The tool-output grant set up before 0.6.1, without its log export.
+    logsMissing: traceCapture && !logs,
   };
 }
 
@@ -450,6 +507,7 @@ async function applyCapture(state, granted, capture) {
   await installEnv({
     deviceId: state?.deviceId || randomUUID(),
     metricsEndpoint: granted.metricsEndpoint,
+    logsEndpoint: granted.logsEndpoint,
     tracesEndpoint: granted.tracesEndpoint,
     ingestionKey: granted.token,
     ingestionKeyId: state?.ingestionKeyId ?? null,
@@ -472,10 +530,13 @@ async function recordPending(pending) {
   await atomicWrite(statePath, JSON.stringify(state, null, 2) + "\n");
 }
 
-function pendingNotice(state, granted) {
+function pendingNotice(state, granted, { upgrade = false } = {}) {
   const organization = state?.organizationName || "your Sabia organization";
+  const asked = upgrade
+    ? "Sabia for Claude Code 0.6.1 adds Claude Code's tool events (tool arguments and skill names, without prompt text) to the tool-output grant this device already has, and asks before exporting them. "
+    : `Sabia: an administrator of ${organization} asked to widen what this device shares. `;
   return (
-    `Sabia: an administrator of ${organization} asked to widen what this device shares. ` +
+    asked +
     `If approved: ${describeCapture(granted)} ` +
     "Nothing more is exported until the person using this device approves. " +
     `To approve, run: node "${process.argv[1]}" approve. To decline, do nothing; this notice repeats at each session start while the request stands.\n`
@@ -485,6 +546,7 @@ function pendingNotice(state, granted) {
 async function installEnv(input) {
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : {};
+  if (input.existingState) releasePromptSetting(env, input.existingState);
 
   // Capture the user's own values once. Reconnecting to rotate a key must not
   // record Sabia's own block as "what was there before", or disconnect would
@@ -502,9 +564,7 @@ async function installEnv(input) {
       : capturePrevious(env);
 
   // Assigned key by key rather than merged, so a managed key the current mode
-  // does not write is removed instead of surviving. A stale
-  // OTEL_LOG_USER_PROMPTS=1 from an earlier version would otherwise keep
-  // sending prompt text.
+  // does not write is removed instead of surviving.
   const managed = managedEnv(input);
   for (const key of MANAGED_KEYS) {
     if (key in managed) {
@@ -538,11 +598,12 @@ function managedEnv(input) {
   const env = {
     CLAUDE_CODE_ENABLE_TELEMETRY: "1",
     OTEL_METRICS_EXPORTER: "otlp",
-    // Claude Code's log records carry prompt and tool content, so this plugin
-    // never exports them.
-    OTEL_LOGS_EXPORTER: "none",
-    // Traces carry tool input/output bodies, so they are off unless this
-    // connection was approved for the tool-output grant (SAB-81).
+    // Log records carry tool arguments and decisions, and traces carry tool
+    // input/output bodies, so both are off unless this connection was approved
+    // for the tool-output grant (SAB-81). Claude Code redacts prompt text in
+    // its log records unless OTEL_LOG_USER_PROMPTS is set, which this plugin
+    // never does.
+    OTEL_LOGS_EXPORTER: input.traceCapture ? "otlp" : "none",
     OTEL_TRACES_EXPORTER: input.traceCapture ? "otlp" : "none",
     OTEL_EXPORTER_OTLP_METRICS_PROTOCOL: "http/json",
     // The full signal URL, not a base one — the metrics-specific variable is
@@ -555,12 +616,16 @@ function managedEnv(input) {
     OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: "delta",
     // The signal-agnostic header variable, which is the one Claude Code
     // documents. It carries the key to whichever signals are enabled, which is
-    // exactly the set Sabia asked for: metrics always, traces only under the
-    // tool-output grant.
+    // exactly the set Sabia asked for: metrics always, logs and traces only
+    // under the tool-output grant.
     OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${input.ingestionKey}`,
   };
 
   if (input.traceCapture) {
+    // Tool events, MCP connector arguments and skill activations ride the log
+    // records; Sabia identifies connector updates and skill use from them.
+    env.OTEL_EXPORTER_OTLP_LOGS_PROTOCOL = "http/json";
+    env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = input.logsEndpoint;
     env.CLAUDE_CODE_ENHANCED_TELEMETRY_BETA = "1";
     env.OTEL_EXPORTER_OTLP_TRACES_PROTOCOL = "http/json";
     env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = input.tracesEndpoint;
