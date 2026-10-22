@@ -121,10 +121,10 @@ instructions are downloaded.
 | When | Runs | Network | Writes |
 | --- | --- | --- | --- |
 | You ask to connect (`connect-sabia` skill) | `scripts/sabia.mjs connect`, which opens your browser with `open`, `xdg-open` or `start` | `POST /api/v1/telemetry/connect`, then polls `GET /api/v1/telemetry/connect/<id>` until you approve | The `env` block in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`, mode 0600 |
-| Every session start | `scripts/sabia.mjs sync --quiet` and `scripts/sabia-report-binding.mjs` | `GET /api/v1/telemetry/connection` (the grants for this key); retries of queued report bindings | Settings only when a grant narrowed |
+| Every session start | `scripts/sabia.mjs sync --quiet` and `scripts/sabia-report-binding.mjs` | `GET /api/v1/telemetry/connection` (the grants for this key); retries of queued report bindings | The settings and `~/.claude/sabia-otel-state.json` when a grant narrowed or a wider one is waiting; the report-binding queue as items are sent or expire |
 | Claude Code itself, once connected | Nothing extra | Token metrics to `/api/v1/telemetry/otlp`; under the tool-output grant, traces to `/api/v1/telemetry/traces` | Nothing |
 | After `report_artifact` | `scripts/sabia-report-binding.mjs` | `POST /api/v1/artifact-reporting/claude-code-invocation` | A retry queue in the plugin's data directory |
-| After any MCP tool call | `scripts/sabia-connector-hook.mjs`, which exits at once unless the tool-output grant is on and the call was a successful connector create or update | `GET /api/v1/telemetry/claude-code/hooks/contract` (a JSON allowlist of operations, at most daily), `POST /api/v1/telemetry/claude-code/hooks` | The contract cache in the plugin's data directory |
+| After any MCP tool call | `scripts/sabia-connector-hook.mjs`, which exits at once unless the tool-output grant is on and the call was a successful connector create or update | `GET /api/v1/telemetry/claude-code/hooks/contract` (a JSON allowlist of operations, at most daily), `POST /api/v1/telemetry/claude-code/hooks` | The contract cache in the plugin's data directory, and a retry-pause marker in the system temporary directory |
 | You run `disconnect` | `scripts/sabia.mjs disconnect` | `DELETE /api/v1/telemetry/connection` | Restores the settings you had before |
 | You use Output Reporting | Nothing local | The hosted MCP server `/api/mcp/artifacts`, signed in with OAuth through `/mcp` | Claude Code's own OAuth token store |
 
