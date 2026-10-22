@@ -125,6 +125,7 @@ instructions are downloaded.
 | Claude Code itself, once connected | Nothing extra | Token metrics to `/api/v1/telemetry/otlp`; under the tool-output grant, log records to the same endpoint and traces to `/api/v1/telemetry/traces` | Nothing |
 | After `report_artifact` | `scripts/sabia-report-binding.mjs` | `POST /api/v1/artifact-reporting/claude-code-invocation` | A retry queue in the plugin's data directory |
 | After any MCP tool call | `scripts/sabia-connector-hook.mjs`, which exits at once unless the tool-output grant is on and the call was a successful connector create or update | `GET /api/v1/telemetry/claude-code/hooks/contract` (a JSON allowlist of operations, at most daily), `POST /api/v1/telemetry/claude-code/hooks` | The contract cache in the plugin's data directory, and a retry-pause marker in the system temporary directory |
+| You approve a wider grant (`approve`) | `scripts/sabia.mjs approve` | `GET /api/v1/telemetry/connection` | The settings and `~/.claude/sabia-otel-state.json` |
 | You run `disconnect` | `scripts/sabia.mjs disconnect` | `DELETE /api/v1/telemetry/connection` | Restores the settings you had before |
 | You use Output Reporting | Nothing local | The hosted MCP server `/api/mcp/artifacts`, signed in with OAuth through `/mcp` | Claude Code's own OAuth token store |
 

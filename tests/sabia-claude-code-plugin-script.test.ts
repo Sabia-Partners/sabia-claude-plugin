@@ -527,7 +527,7 @@ describe("Sabia Claude Code plugin settings management", () => {
 
       const { stdout } = await sabia("sync", "--quiet");
 
-      expect(stdout).toContain("asked to widen what this device shares");
+      expect(stdout).toContain("asks before exporting them");
       expect(JSON.stringify(await readSettings())).toBe(before);
 
       await sabia("approve");
@@ -535,6 +535,53 @@ describe("Sabia Claude Code plugin settings management", () => {
       expect(env.OTEL_LOGS_EXPORTER).toBe("otlp");
       expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
       expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe(`${serverEndpoint}/api/v1/telemetry/otlp`);
+    });
+
+    /** Settings and state as plugin 0.5.0 left them under raw capture and tool output. */
+    async function legacyRawDevice(previousPrompts: string | null) {
+      await configureWithExporters({ logs: "otlp", traces: "otlp" }, {
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${serverEndpoint}/api/v1/telemetry/otlp`,
+        OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: `${serverEndpoint}/api/v1/telemetry/otlp`,
+        OTEL_LOG_USER_PROMPTS: "1",
+      });
+      const state = JSON.parse(await readFile(statePath, "utf8"));
+      state.previousEnv = { ...state.previousEnv, OTEL_LOG_USER_PROMPTS: previousPrompts };
+      await writeFile(statePath, JSON.stringify(state));
+    }
+
+    it("hands back the prompt setting a 0.5.0 device's plugin wrote, once", async () => {
+      await legacyRawDevice(null);
+      grants = { rawCapture: true, traceCapture: true };
+
+      const first = await sabia("sync", "--quiet");
+      expect(first.stdout).toContain("no longer manages OTEL_LOG_USER_PROMPTS");
+      expect((await readSettings()).env?.OTEL_LOG_USER_PROMPTS).toBeUndefined();
+      expect(JSON.parse(await readFile(statePath, "utf8")).previousEnv).not.toHaveProperty("OTEL_LOG_USER_PROMPTS");
+
+      // From now on it is the person's own: set again, it stays.
+      const settings = await readSettings();
+      await writeFile(settingsPath, JSON.stringify({ ...settings, env: { ...settings.env, OTEL_LOG_USER_PROMPTS: "1" } }));
+      expect((await sabia("sync", "--quiet")).stdout).toBe("");
+      expect((await readSettings()).env?.OTEL_LOG_USER_PROMPTS).toBe("1");
+    });
+
+    it("gives back the user's own earlier value, also on disconnect", async () => {
+      await legacyRawDevice("0");
+      await sabia("disconnect", "--local-only");
+      expect((await readSettings()).env?.OTEL_LOG_USER_PROMPTS).toBe("0");
+    });
+
+    it("tells a 0.6.0 tool-output device that the upgrade, not an administrator, asks", async () => {
+      await configureWithExporters({ logs: "none", traces: "otlp" }, {
+        OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: `${serverEndpoint}/api/v1/telemetry/otlp`,
+      });
+      grants = { rawCapture: false, traceCapture: true };
+
+      const { stdout } = await sabia("sync", "--quiet");
+
+      expect(stdout).toContain("0.6.1 adds Claude Code's tool events");
+      expect(stdout).not.toContain("an administrator");
+      expect((await sabia("status")).stdout).toContain("Tool events are not exported yet");
     });
 
     it("changes nothing when approval cannot reach Sabia", async () => {

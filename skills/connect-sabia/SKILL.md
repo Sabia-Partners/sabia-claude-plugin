@@ -70,7 +70,9 @@ source of truth.
 ## Approve a wider grant
 
 When that notice appears in your session context, tell the user early, in
-plain words: their Sabia administrator asked for this device to share more,
+plain words: their Sabia administrator asked for this device to share more (or,
+for the notice that starts "Sabia for Claude Code 0.6.1 adds", that the plugin
+update widened the tool-output grant they already have),
 what it would add (quote the "If approved" sentence), and that nothing more is
 sent unless they agree. Run `node <plugin-root>/scripts/sabia.mjs approve`
 **only** when the user explicitly says yes in this conversation. Never approve

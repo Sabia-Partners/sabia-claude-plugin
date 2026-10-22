@@ -50,12 +50,46 @@ const MANAGED_KEYS = [
 ];
 
 /**
+ * Plugins before 0.6.0 managed OTEL_LOG_USER_PROMPTS: they wrote "1" under raw
+ * capture, removed it otherwise, and kept the user's own value in
+ * previousEnv. This version hands it back once, the first time it sees
+ * settings an older version managed: a value only Sabia could have left ("1",
+ * or the key removed) is replaced by what the user had before. A value the
+ * user has changed since stays. Either way the key leaves previousEnv, so it
+ * is never touched again. Returns whether anything changed.
+ */
+function releasePromptSetting(env, state) {
+  const previousEnv = plainObject(state?.previousEnv) ? state.previousEnv : null;
+  if (!previousEnv || !Object.hasOwn(previousEnv, PROMPT_SETTING)) return false;
+  const current = env[PROMPT_SETTING];
+  if (current === undefined || current === "1") {
+    const previous = previousEnv[PROMPT_SETTING];
+    if (typeof previous === "string") env[PROMPT_SETTING] = previous;
+    else delete env[PROMPT_SETTING];
+  }
+  delete previousEnv[PROMPT_SETTING];
+  return true;
+}
+
+/** Applies the release to the settings and state on disk; true when it did. */
+async function releasePromptSettingOnDisk() {
+  const [settings, state] = await Promise.all([readSettings(), readJson(statePath)]);
+  const env = plainObject(settings.env) ? { ...settings.env } : null;
+  if (!env || !state || !releasePromptSetting(env, state)) return false;
+  settings.env = env;
+  await writeSettings(settings);
+  await atomicWrite(statePath, JSON.stringify(state, null, 2) + "\n");
+  return true;
+}
+
+/**
  * Sabia's own key format, which is what makes the header a reliable ownership
  * marker: nothing but this plugin writes a `sbia_ing_` bearer token into Claude
  * Code's settings, so finding one is proof the block is ours to restore.
  */
 const INGESTION_KEY_PATTERN = /^sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43}$/;
 const MANAGED_HEADER_PATTERN = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
+const PROMPT_SETTING = "OTEL_LOG_USER_PROMPTS";
 
 const { command, options } = parseArguments(process.argv.slice(2));
 const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
@@ -239,6 +273,7 @@ async function disconnect() {
     }
   }
 
+  if (state) releasePromptSetting(env, state);
   const previousEnv = plainObject(state?.previousEnv) ? state.previousEnv : {};
   for (const key of MANAGED_KEYS) {
     const value = previousEnv[key];
@@ -283,6 +318,9 @@ async function status() {
   process.stdout.write(
     `Exports: ${describeCapture({ traceCapture: env.OTEL_TRACES_EXPORTER === "otlp" })}\n`,
   );
+  if (currentCapture(env).logsMissing) {
+    process.stdout.write("Tool events are not exported yet: this device was set up before 0.6.1. Run approve to add them.\n");
+  }
   if (env.OTEL_LOG_USER_PROMPTS === "1" && env.OTEL_LOGS_EXPORTER === "otlp") {
     process.stdout.write(
       "Prompt text is also exported, because OTEL_LOG_USER_PROMPTS is set in your Claude Code settings. Sabia keeps it only if your organization granted raw capture.\n",
@@ -316,6 +354,11 @@ async function status() {
  */
 async function sync() {
   const quiet = Boolean(options.quiet);
+  if (await releasePromptSettingOnDisk()) {
+    process.stdout.write(
+      "Sabia no longer manages OTEL_LOG_USER_PROMPTS. An earlier version of the plugin had set it; your previous value is back. Prompt text is sent only if you set it yourself.\n",
+    );
+  }
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : null;
   if (!env || !isManaged(env)) {
@@ -349,7 +392,7 @@ async function sync() {
 
   if (pending.traceCapture) {
     await recordPending(pending);
-    process.stdout.write(pendingNotice(state, granted));
+    process.stdout.write(pendingNotice(state, granted, { upgrade: current.traceCapture && current.logsMissing }));
     return;
   }
 
@@ -363,6 +406,7 @@ async function sync() {
  * request withdrawn in the app since the last session cannot be approved.
  */
 async function approve() {
+  await releasePromptSettingOnDisk();
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : null;
   if (!env || !isManaged(env)) {
@@ -486,10 +530,13 @@ async function recordPending(pending) {
   await atomicWrite(statePath, JSON.stringify(state, null, 2) + "\n");
 }
 
-function pendingNotice(state, granted) {
+function pendingNotice(state, granted, { upgrade = false } = {}) {
   const organization = state?.organizationName || "your Sabia organization";
+  const asked = upgrade
+    ? "Sabia for Claude Code 0.6.1 adds Claude Code's tool events (tool arguments and skill names, without prompt text) to the tool-output grant this device already has, and asks before exporting them. "
+    : `Sabia: an administrator of ${organization} asked to widen what this device shares. `;
   return (
-    `Sabia: an administrator of ${organization} asked to widen what this device shares. ` +
+    asked +
     `If approved: ${describeCapture(granted)} ` +
     "Nothing more is exported until the person using this device approves. " +
     `To approve, run: node "${process.argv[1]}" approve. To decline, do nothing; this notice repeats at each session start while the request stands.\n`
@@ -499,6 +546,7 @@ function pendingNotice(state, granted) {
 async function installEnv(input) {
   const settings = await readSettings();
   const env = plainObject(settings.env) ? { ...settings.env } : {};
+  if (input.existingState) releasePromptSetting(env, input.existingState);
 
   // Capture the user's own values once. Reconnecting to rotate a key must not
   // record Sabia's own block as "what was there before", or disconnect would
