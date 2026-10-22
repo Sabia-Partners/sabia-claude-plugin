@@ -1,7 +1,7 @@
 {
   "name": "sabia",
   "displayName": "Sabia",
-  "version": "0.6.1",
+  "version": "0.7.0",
   "description": "Sabia for Claude Code: use Output Reporting for completed work through Sabia's hosted MCP tools and connect native OpenTelemetry token usage, each with its own consent.",
   "author": {
     "name": "Sabia Partners",

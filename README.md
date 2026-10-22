@@ -32,6 +32,8 @@ that produced it.
 
 Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →
 `plugin:sabia:sabia-artifacts` to connect Output Reporting. [SETUP.md](SETUP.md) walks through both, step by step.
+Needs Claude Code 2.1.81 or later. For Claude on the web, Desktop and mobile, see
+[Connect Claude to Sabia](https://app2.sabiapartners.ca/help/claude).
 
 You need a Sabia workspace. Talk to [Sabia Partners](https://sabiapartners.ca/contact)
 if your team does not have one yet.

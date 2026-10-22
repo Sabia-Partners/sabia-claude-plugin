@@ -2,11 +2,7 @@
   "mcpServers": {
     "sabia-artifacts": {
       "type": "http",
-      "url": "https://app2.sabiapartners.ca/api/mcp/artifacts",
-      "oauth": {
-        "clientId": "sabia-claude-code",
-        "callbackPort": 45711
-      }
+      "url": "https://app2.sabiapartners.ca/api/mcp/artifacts"
     }
   }
 }
