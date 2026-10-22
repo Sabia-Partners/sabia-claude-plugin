@@ -76,9 +76,12 @@ Act on its `status`:
 
 - `available`: call `report_artifact_v3` with exactly what the contract
   describes. Where this skill and the contract differ, the contract wins.
-- `incompatible`: ask for the contract once more, then report.
 - `unsupported`, `not_selected` or `disabled`: stop. Tell the user in one
   sentence and do not report another way.
+
+If `report_artifact_v3` answers `CONFIGURATION_CHANGED` or
+`CONTRACT_INCOMPATIBLE`, nothing was accepted: ask for the contract once more
+and resend with the same `event_id`.
 
 Mint a stable `event_id` once the operation has succeeded and keep it with the
 report; reuse it and the identical request for every retry.
@@ -91,8 +94,9 @@ identifiers for them.
 Use actual identities from the successful operation. Never infer one from a
 title or manufacture a URL, ID or scope:
 
-- GitHub: the object's URL, or `owner`, `repository` and `number` (for a
-  commit, `owner`, `repository` and the full `commit_sha`).
+- GitHub: the pull request's or issue's own URL without a fragment, or
+  `owner`, `repository` and `number`; never a review or comment link. For a
+  commit, its URL or `owner`, `repository` and the full `commit_sha`.
 - Google Drive: the contract's exact `scope_ref` plus the `file_id` or URL from
   the tool result.
 - Linear: the contract's exact `scope_ref` plus the issue `identifier` (such as
