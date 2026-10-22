@@ -8,6 +8,7 @@ import {
   buildCoworkLogsPayload,
   findSessionAudits,
   readSessionEvents,
+  syncCoworkUsage,
 } from "../cowork/scripts/cowork-local.mjs";
 
 // The shape of Cowork's local audit log, reduced to the fields read. A message
@@ -146,6 +147,226 @@ describe("readSessionEvents", () => {
   it("ignores lines it does not recognise", async () => {
     await writeFile(auditPath, `not json\n${JSON.stringify({ type: "result", uuid: "x", _audit_timestamp: "never" })}\n${JSON.stringify({ type: "rate_limit_event", _audit_timestamp: at(1) })}\n`);
     expect((await readSessionEvents(auditPath)).events).toEqual([]);
+  });
+});
+
+// A session's turns as Claude Code records them. `modelUsage` holds totals per
+// model (subagents included) and `usage` the main thread's own share of this
+// turn. From Claude Code 2.1.288 a resumed turn starts from the previous
+// turn's totals, so `modelUsage` carries them over while `usage` does not.
+type Counts = [input: number, output: number, cacheRead: number, cacheCreation: number];
+const opus = "claude-opus-5";
+const haiku = "claude-haiku-4-5";
+const init = (session = "cli-1") => ({ type: "system", subtype: "init", session_id: session, model: opus, _audit_timestamp: at(0) });
+function turn(
+  uuid: string,
+  second: number,
+  totals: Record<string, Counts>,
+  own: Counts,
+  { session = "cli-1", apiMs = 1_000, wallMs = 2_000 } = {},
+) {
+  return {
+    type: "result", uuid, session_id: session, _audit_timestamp: at(second),
+    duration_ms: wallMs, duration_api_ms: apiMs,
+    usage: { input_tokens: own[0], output_tokens: own[1], cache_read_input_tokens: own[2], cache_creation_input_tokens: own[3] },
+    modelUsage: Object.fromEntries(
+      Object.entries(totals).map(([model, [input, output, cacheRead, cacheCreation]]) => [
+        model,
+        { inputTokens: input, outputTokens: output, cacheReadInputTokens: cacheRead, cacheCreationInputTokens: cacheCreation, costUSD: 0.5 },
+      ]),
+    ),
+  };
+}
+
+function sent(events: Array<{ name: string; sequence: string; attributes: Record<string, unknown> }>) {
+  return events
+    .filter((event) => event.name === "api_request")
+    .map((event) => ({
+      sequence: event.sequence,
+      tokens: [
+        event.attributes.input_tokens,
+        event.attributes.output_tokens,
+        event.attributes.cache_read_tokens,
+        event.attributes.cache_creation_tokens,
+      ],
+    }));
+}
+
+describe("turns that carry the previous totals over", () => {
+  it("sends 100 then 200 as 100 and 100", async () => {
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      init(),
+      turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50]),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events)).toEqual([
+      { sequence: `r1:${opus}`, tokens: [10, 100, 1000, 50] },
+      { sequence: `r2:${opus}`, tokens: [10, 100, 1000, 50] },
+    ]);
+  });
+
+  it("sends a model whose carried totals did not move as nothing, and a new model whole", async () => {
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50], [haiku]: [400, 40, 0, 0] }, [10, 100, 1000, 50]),
+      turn("r2", 2, { [opus]: [12, 150, 1500, 60], [haiku]: [400, 40, 0, 0] }, [2, 50, 500, 10]),
+      turn("r3", 3, { [opus]: [14, 170, 1900, 70], [haiku]: [400, 40, 0, 0], "claude-sonnet-5": [7, 3, 0, 0] }, [2, 20, 400, 10]),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events)).toEqual([
+      { sequence: `r1:${opus}`, tokens: [10, 100, 1000, 50] },
+      { sequence: `r1:${haiku}`, tokens: [400, 40, 0, 0] },
+      { sequence: `r2:${opus}`, tokens: [2, 50, 500, 10] },
+      { sequence: `r3:${opus}`, tokens: [2, 20, 400, 10] },
+      { sequence: "r3:claude-sonnet-5", tokens: [7, 3, 0, 0] },
+    ]);
+  });
+
+  it("sends each turn whole when the totals are that turn's own, even if they happen to grow", async () => {
+    // Claude Code before 2.1.288: every result is a fresh count.
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      turn("r2", 2, { [opus]: [30, 900, 9000, 600] }, [30, 900, 9000, 600]),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events).map((event) => event.tokens)).toEqual([
+      [10, 100, 1000, 50],
+      [30, 900, 9000, 600],
+    ]);
+  });
+
+  it("starts over after a reset and never sends a negative count", async () => {
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50]),
+      // A new process that did not restore the totals.
+      turn("r3", 3, { [opus]: [5, 60, 700, 20] }, [5, 60, 700, 20]),
+      // Totals that went down in one class cannot be carried over.
+      turn("r4", 4, { [opus]: [9, 70, 650, 30] }, [4, 10, 1, 10]),
+    ]);
+
+    const tokens = sent((await readSessionEvents(auditPath)).events).map((event) => event.tokens);
+    expect(tokens).toEqual([
+      [10, 100, 1000, 50],
+      [10, 100, 1000, 50],
+      [5, 60, 700, 20],
+      [9, 70, 650, 30],
+    ]);
+    expect(tokens.flat().every((value) => (value as number) >= 0)).toBe(true);
+  });
+
+  it("counts a subagent on the main model once in a carried turn", async () => {
+    // The main model grew by more than its own share: a subagent used it too.
+    // Carried only because the previous turn was, every total grew, and the
+    // API time grew by no more than this turn took.
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50], { apiMs: 1_000, wallMs: 1_200 }),
+      turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50], { apiMs: 2_000, wallMs: 1_100 }),
+      turn("r3", 3, { [opus]: [35, 500, 3500, 300] }, [5, 100, 500, 50], { apiMs: 3_500, wallMs: 1_600 }),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events).at(-1)!.tokens).toEqual([15, 300, 1500, 200]);
+  });
+
+  it("sends that same shape whole when nothing before it was carried", async () => {
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50], { apiMs: 1_000, wallMs: 1_200 }),
+      turn("r2", 2, { [opus]: [25, 400, 2500, 250] }, [5, 100, 500, 50], { apiMs: 2_500, wallMs: 1_600 }),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events).at(-1)!.tokens).toEqual([25, 400, 2500, 250]);
+  });
+
+  it("keeps a separate baseline per session in one log", async () => {
+    await write([
+      init("a"),
+      turn("a1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50], { session: "a" }),
+      init("b"),
+      turn("b1", 2, { [opus]: [1, 10, 100, 5] }, [1, 10, 100, 5], { session: "b" }),
+      turn("a2", 3, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50], { session: "a" }),
+    ]);
+
+    expect(sent((await readSessionEvents(auditPath)).events).map((event) => event.tokens)).toEqual([
+      [10, 100, 1000, 50],
+      [1, 10, 100, 5],
+      [10, 100, 1000, 50],
+    ]);
+  });
+
+  it("carries the baseline across runs and rebuilds it for a cursor saved without one", async () => {
+    const first = [init(), turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50])];
+    const later = [init(), turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50])];
+    await write(first);
+    const run1 = await readSessionEvents(auditPath);
+    await appendFile(auditPath, later.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
+
+    const resumed = await readSessionEvents(auditPath, run1.cursor);
+    const { usage: _usage, ...savedBeforeThisFix } = run1.cursor;
+    const upgraded = await readSessionEvents(auditPath, savedBeforeThisFix);
+
+    expect(sent(resumed.events)).toEqual([{ sequence: `r2:${opus}`, tokens: [10, 100, 1000, 50] }]);
+    expect(upgraded.events).toEqual(resumed.events);
+    expect(upgraded.cursor).toEqual(resumed.cursor);
+  });
+
+  it("sends a turn seen for the first time whole, and an already-seen result never again", async () => {
+    await write([init(), turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50])]);
+    const once = await readSessionEvents(auditPath);
+    expect(sent(once.events).map((event) => event.tokens)).toEqual([[20, 200, 2000, 100]]);
+
+    // The same result written again (a replayed line) adds nothing and moves no baseline.
+    await appendFile(auditPath, `${JSON.stringify(turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50]))}\n`);
+    const replay = await readSessionEvents(auditPath, once.cursor);
+    expect(replay.events).toEqual([]);
+    expect(replay.cursor.usage).toEqual(once.cursor.usage);
+  });
+});
+
+describe("syncCoworkUsage", () => {
+  const state = { baseUrl: "https://sabia.test", ingestionKey: "sbia_ing_test" };
+  const tokensPosted = (bodies: string[]) =>
+    bodies.flatMap((body) =>
+      JSON.parse(body).resourceLogs[0].scopeLogs[0].logRecords.map((record: { attributes: Array<{ key: string; value: { stringValue?: string; intValue?: string } }> }) => {
+        const attributes = Object.fromEntries(record.attributes.map((a) => [a.key, a.value.stringValue ?? a.value.intValue]));
+        return `${attributes["event.sequence"]}=${attributes.output_tokens}`;
+      }),
+    );
+
+  it("resends the same differences after a failed delivery and nothing after a successful one", async () => {
+    await write([
+      init(),
+      turn("r1", 1, { [opus]: [10, 100, 1000, 50] }, [10, 100, 1000, 50]),
+      turn("r2", 2, { [opus]: [20, 200, 2000, 100] }, [10, 100, 1000, 50]),
+    ]);
+    const cursorPath = join(appData, "cursor.json");
+    const bodies: string[] = [];
+    let failNext = true;
+    const fetchImpl = async (url: URL | string, init?: { method?: string; body?: string }) => {
+      if (init?.method !== "POST") return new Response(JSON.stringify({ rawCapture: false }), { status: 200 });
+      bodies.push(init.body!);
+      if (failNext) {
+        failNext = false;
+        return new Response("{}", { status: 503 });
+      }
+      return new Response("{}", { status: 200 });
+    };
+
+    const failed = await syncCoworkUsage({ state, cursorPath, appDataDirectory: appData, fetchImpl });
+    const retried = await syncCoworkUsage({ state, cursorPath, appDataDirectory: appData, fetchImpl });
+    const idle = await syncCoworkUsage({ state, cursorPath, appDataDirectory: appData, fetchImpl });
+
+    expect(failed.status).toBe("unreachable");
+    expect(retried).toMatchObject({ status: "synced", sent: 2 });
+    expect(idle).toMatchObject({ status: "synced", sent: 0 });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+    expect(tokensPosted(bodies.slice(1))).toEqual([`r1:${opus}=100`, `r2:${opus}=100`]);
   });
 });
 

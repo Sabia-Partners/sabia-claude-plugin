@@ -58,10 +58,12 @@ sends past sessions and, on macOS, installs a LaunchAgent
 
 What is sent:
 
-- **Always:** per turn and per model, the token totals Cowork itself records
+- **Always:** per turn and per model, the tokens Cowork itself records
   (input, output, cache reads, cache writes), the number of model calls, the
   time, and the Cowork session id. Tool names and success are sent without
-  their arguments.
+  their arguments. When Claude Code starts a turn from the previous turn's
+  totals (a resumed session, or a queued follow-up), only what the turn added
+  is sent, so each token counts once.
 - **With `--content`, once an owner or administrator approves the grant in
   Sabia:** prompts, responses, and tool inputs and results (bounded to Cowork's
   own exporter limits). Until the grant is approved, `sync` sends usage only.
