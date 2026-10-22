@@ -54,6 +54,9 @@ describe("Sabia for Claude Code plugin manifest", () => {
     const matcher = new RegExp(post.matcher);
     expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact")).toBe(true);
     expect(matcher.test("mcp__sabia-artifacts__report_artifact")).toBe(true);
+    expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact_v3")).toBe(true);
+    expect(matcher.test("mcp__sabia-artifacts__report_artifact_v3")).toBe(true);
+    expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact_v4")).toBe(false);
     expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__get_artifact_report")).toBe(false);
     expect(matcher.test("Bash")).toBe(false);
     expect(post.hooks).toEqual([{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/sabia-report-binding.mjs"', timeout: 8 }]);
@@ -69,8 +72,18 @@ describe("Sabia for Claude Code plugin manifest", () => {
   it("ships the reporting skill against the scoped tool names", async () => {
     const skill = await readFile(join(root, "skills/report-artifact/SKILL.md"), "utf8");
     expect(skill).toMatch(/^---\nname: report-artifact\n/);
-    expect(skill).toContain("mcp__plugin_sabia_sabia-artifacts__report_artifact");
-    expect(skill).toContain("`source_application` is\n`claude_code`");
+    expect(skill).toContain("mcp__plugin_sabia_sabia-artifacts__report_artifact_v3");
+    // New reports go through the v3 contract; the database refuses new v2 reports.
+    expect(skill).toContain("First call `get_reporting_contract`");
+    expect(skill).toMatch(/Do not use\s+`report_artifact`:/);
+    expect(skill).not.toContain("schema version 2");
+    // v3 identities and actions: a review is not an update, Drive and Linear need
+    // the contract's scope_ref, and unsupported sources are not reported at all.
+    expect(skill).toMatch(/review that printed its URL is `review`/);
+    expect(skill).toContain("exact `scope_ref`");
+    expect(skill).toMatch(/Slack messages, web publications and email cannot be reported/);
+    expect(skill).not.toMatch(/`send` on `slack`|artifact_account_id|availability `host_local`/);
+    expect(skill).toMatch(/`source_application` is\s+`claude_code`/);
     expect(skill).toContain("original `event_id`");
     expect(skill).toContain("Keep every `usage` value null");
     expect(skill).toContain("Never use Claude Code's own session id");

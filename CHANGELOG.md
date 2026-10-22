@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1
+
+- **Reports use `report_artifact_v3`.** The skill now asks `get_reporting_contract` first and reports with `report_artifact_v3`, as Sabia requires; Sabia refuses new reports through the older `report_artifact`. The binding hook also links v3 reports to the Claude Code session that made them.
+
 ## 0.7.0
 
 - **Sign-in uses Claude's published identity.** Output Reporting no longer pins the `sabia-claude-code` client or callback port `45711`, so sign-in works when that port is busy. Needs Claude Code 2.1.81 or later. After updating, `/mcp` may ask you to sign in once more; the earlier connection stays under Settings → Connected Tools in Sabia until you revoke it.

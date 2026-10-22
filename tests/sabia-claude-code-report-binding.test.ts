@@ -42,6 +42,13 @@ describe("Claude Code report binding", () => {
     expect(nativeBinding({ ...event, tool_response: { content: [{ type: "text", text: JSON.stringify(acceptance) }] } }, device)).toMatchObject({ receipt_proof: proof });
     expect(nativeBinding({ ...event, tool_response: `Quoted: ${JSON.stringify(acceptance)}` }, device)).toBeNull();
   });
+  it("binds a v3 report, whose receipt carries the same proof", () => {
+    const v3 = { ...acceptance, canonical_output_id: acceptance.output_id, artifact_id: null, resolution_state: "unresolved", usage_status: "pending" };
+    const binding = nativeBinding({ ...event, tool_name: `${scopedTool}_v3`, tool_response: [{ type: "text", text: JSON.stringify(v3) }] }, device);
+    expect(binding).toMatchObject({ receipt_proof: proof, invocation_id: "toolu_01ReportCall", conversation_key: expectedKey });
+    expect(nativeBinding({ ...event, tool_name: "mcp__sabia-artifacts__report_artifact_v3" }, device)).toMatchObject({ receipt_proof: proof });
+    expect(nativeBinding({ ...event, tool_name: `${scopedTool}_v4` }, device)).toBeNull();
+  });
   it("ignores other tools, lookups, failures, duplicates and missing coordinates", () => {
     expect(nativeBinding({ ...event, tool_name: "mcp__plugin_sabia_sabia-artifacts__get_artifact_report" }, device)).toBeNull();
     expect(nativeBinding({ ...event, tool_name: "mcp__plugin_other_sabia-artifacts__report_artifact" }, device)).toBeNull();
