@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -154,6 +154,29 @@ describe("Sabia Desktop Extension", () => {
 
     await until(async () => (await tool("sabia_status")).includes("sent 1 events"));
     expect(await tool("sabia_sync_now")).toContain("sent 0 events");
+  });
+
+  it("sends a resumed turn's carried-over totals as the difference", async () => {
+    const { tool } = start();
+    await until(() => connectRequests.length === 1);
+    approved = true;
+    await until(() => posts.length === 1);
+
+    // Claude Code restored res-1's totals (10 in, 500 out) and added this turn's own.
+    await appendFile(
+      join(workspace, "Claude", "local-agent-mode-sessions", "acct", "org", "local_1", "audit.jsonl"),
+      `${JSON.stringify({ type: "system", subtype: "init", session_id: "cli-1", model: "claude-opus-5" })}\n${JSON.stringify({ type: "result", uuid: "res-2", session_id: "cli-1", _audit_timestamp: "2026-09-25T12:01:00Z", usage: { input_tokens: 2, output_tokens: 80, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }, modelUsage: { "claude-opus-5": { inputTokens: 12, outputTokens: 580, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 } } })}\n`,
+    );
+    expect(await tool("sabia_sync_now")).toContain("sent 1 events");
+
+    const record = JSON.parse(posts.at(-1)!).resourceLogs[0].scopeLogs[0].logRecords[0];
+    const attributes = Object.fromEntries(
+      record.attributes.map((attribute: { key: string; value: { stringValue?: string; intValue?: string } }) => [
+        attribute.key,
+        attribute.value.stringValue ?? attribute.value.intValue,
+      ]),
+    );
+    expect(attributes).toMatchObject({ "event.sequence": "res-2:claude-opus-5", input_tokens: "2", output_tokens: "80" });
   });
 
   it("starts one approval when Claude Desktop launches the server twice at once", async () => {
