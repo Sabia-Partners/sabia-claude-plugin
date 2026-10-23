@@ -1,10 +1,12 @@
 #!/usr/bin/env node
-// Claude Code PostToolUse bridge for connector (MCP) mutations. Claude Code's
-// OpenTelemetry export never carries a connector tool's result, so a Google
-// Doc or a pull request the connector *created* has no id anywhere Sabia can
-// see. This hook reads the reply, keeps the identifiers the server would keep
-// from telemetry, and posts them under the tool-output grant. Nothing else
-// leaves the machine: no prompts, no document bodies, no transcript.
+// Claude Code PostToolUse bridge for connector (MCP) mutations. Before 2.1.283
+// Claude Code's OpenTelemetry export never carried a connector tool's result,
+// so a Google Doc or a pull request the connector *created* had no id anywhere
+// Sabia could see. This hook reads the reply, keeps the identifiers the server
+// would keep from telemetry, and posts them under the tool-output grant. The
+// hook itself sends nothing else: no prompts, no document bodies, no
+// transcript. (From 2.1.283 the trace export under the same grant carries the
+// result body separately.)
 //
 // Which operations count and which identifiers survive is Sabia's connector
 // hook contract. The hook fetches it from the connected Sabia, caches it, and

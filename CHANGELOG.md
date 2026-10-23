@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Tool output disclosure: Claude Code 2.1.283 exports the results of connector (MCP) tools, WebFetch and WebSearch under `OTEL_LOG_TOOL_CONTENT`, which the tool-output grant sets. The `connect --tool-output` notice, README and `connect-sabia` skill now say so instead of promising connector replies are never sent (dashboard-langfuse#330).
+
 ## 0.7.1
 
 - **Reports use `report_artifact_v3`.** The skill now asks `get_reporting_contract` first and reports with `report_artifact_v3`, as Sabia requires; Sabia refuses new reports through the older `report_artifact`. The binding hook also links v3 reports to the Claude Code session that made them.
