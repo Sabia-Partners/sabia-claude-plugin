@@ -203,9 +203,10 @@ function decodeStructured(value, state, depth = 0) {
 // carry them under allowlisted keys: a Drive File's `owner` is the owner's email.
 // A URL is kept, minus any part that carries an address. Port of the
 // dashboard's scrubIdentityScalar, pinned by contracts/connector-hook/v1.json.
-// Letters and digits in any script, so an internationalized address is caught.
-const EMAIL_ADDRESS = /^[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?)+$/u;
-const CONTAINS_EMAIL = /[\p{L}\p{N}._%+'-]+@[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{N}-]*[\p{L}\p{N}])?)+/u;
+// Letters, digits and combining marks in any script, plus the zero-width
+// joiners, so an internationalized or decomposed address is caught.
+const EMAIL_ADDRESS = /^[\p{L}\p{M}\p{N}\u200C\u200D._%+'-]+@[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}\u200C\u200D-]*[\p{L}\p{M}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}\u200C\u200D-]*[\p{L}\p{M}\p{N}])?)+$/u;
+const CONTAINS_EMAIL = /[\p{L}\p{M}\p{N}\u200C\u200D._%+'-]+@[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}\u200C\u200D-]*[\p{L}\p{M}\p{N}])?(?:\.[\p{L}\p{N}](?:[\p{L}\p{M}\p{N}\u200C\u200D-]*[\p{L}\p{M}\p{N}])?)+/u;
 /** Decodes every well-formed percent escape and leaves malformed ones as they are. */
 function decodeLeniently(value) {
   return value.replace(/(?:%[0-9A-Fa-f]{2})+/g, (run) => {

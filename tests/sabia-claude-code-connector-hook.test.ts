@@ -192,6 +192,9 @@ describe("Claude Code connector hook", () => {
   });
   it("drops internationalized addresses and keeps a repeated key's safe values, like the dashboard", () => {
     expect(scrubIdentityScalar("josé@exämple.de")).toBeNull();
+    for (const value of ["डाटामेल@डाटामेल.भारत", "ஒருவர்@example.com", "jose\u0301@example.de", "user@exa\u0301mple.de", "می\u200Cخواهم@example.ir"]) {
+      expect(scrubIdentityScalar(value), value).toBeNull();
+    }
     expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=jos%C3%A9%40ex%C3%A4mple.de&tab=files")).toBe("https://github.com/acme/app/pull/42?tab=files");
     expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?tab=files&tab=lucas@example.com&tab=commits")).toBe("https://github.com/acme/app/pull/42?tab=files&tab=commits");
     expect(scrubIdentityScalar("owner/repo@0123456789abcdef")).toBe("owner/repo@0123456789abcdef");
