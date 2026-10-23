@@ -11,7 +11,7 @@ Use the bundled `scripts/sabia.mjs`; do not invent a token counter or read trans
 
 1. Tell the user what this shares: token counts from Claude Code's native OpenTelemetry metrics export, and nothing else. Prompts, responses, tool arguments and file contents are never sent — logs and traces are turned off. It does not report invoice-confirmed spend.
 2. Run `node <plugin-root>/scripts/sabia.mjs connect`. The script opens Sabia in the browser. If browser launch fails, give the printed URL to the user.
-   Add `--raw-capture` or `--tool-output` **only** when the user has asked for what that flag shares — see the sections below. Never add either to make a connection "more useful". When the user wants their sessions on Sabia's **Output page**, that is `--tool-output`.
+   Add `--tool-output` **only** when the user has asked for what it shares — see the section below. Never add it to make a connection "more useful". When the user wants their sessions on Sabia's **Output page**, that is `--tool-output`.
 3. Wait while the user signs in and confirms **Share usage with <organization>**. The script receives the credential through the one-time device handoff and updates the `env` block in `~/.claude/settings.json`.
 4. Report the selected organization and tell the user to **start a new Claude Code session** — the current one already read its environment and will keep exporting nothing. Re-running connect rotates the key with overlap.
 
@@ -21,18 +21,11 @@ it with a generated or preview Vercel URL. For local Sabia development, add
 `configure --endpoint <url> --ingestion-key <key>`; browser connect is the
 normal path.
 
-## Raw capture
-
-`connect --raw-capture` is a pre-production exploration mode with a different
-privacy scope. Before running it, tell the user plainly that Claude Code will
-export prompt text, tool decisions and results, model requests, and session and
-prompt identifiers, that Sabia retains the complete envelopes, and that every
-member of the organization can read them in Settings → Telemetry captures.
-Confirm before running.
-
-Sabia records the choice on the ingestion key at approval, so this is a real
-grant rather than a local setting. Reconnecting without the flag clears the log
-exporter and returns the connection to token counts only.
+This plugin never turns on prompt text. If the user asks for prompts to be
+shared, explain that Claude Code includes them only when
+`OTEL_LOG_USER_PROMPTS=1` is in their own settings, that Sabia keeps them only
+when their organization granted raw capture, and that it is their choice to set
+it. Do not set it for them.
 
 ## Tool output
 
@@ -42,14 +35,14 @@ it, tell the user plainly that Claude Code will export tool result bodies and
 the command lines that produced them (command output can include file contents
 when a command echoes them), that from Claude Code 2.1.283 this includes the
 results of connector (MCP) tools, WebFetch and WebSearch (document text, email
-bodies and web pages a tool returned), that Sabia keeps a reduced per-tool extract and
-drops file-tool bodies, and that every member of the organization can read
-what is kept. Prompt text and assistant responses are not exported by this
-flag. Confirm before running.
+bodies and web pages a tool returned), plus its tool events with each tool's
+arguments, MCP server and tool names and skill names, that Sabia keeps a reduced
+per-tool extract and drops file-tool bodies, and that every member of the
+organization can read what is kept. Claude Code redacts prompt text in those
+events, and assistant responses are not exported. Confirm before running.
 
-Like raw capture, the grant is recorded on the ingestion key at approval;
-reconnecting without the flag turns the trace export off. The two flags are
-independent and can be combined.
+The grant is recorded on the ingestion key at approval; reconnecting without
+the flag turns the log and trace export off.
 
 Two expectations to set: only work done in **new** sessions after connecting
 can appear, and identification depends on where the artifact's identity shows
@@ -80,7 +73,9 @@ source of truth.
 ## Approve a wider grant
 
 When that notice appears in your session context, tell the user early, in
-plain words: their Sabia administrator asked for this device to share more,
+plain words: their Sabia administrator asked for this device to share more (or,
+for the notice that starts "Sabia for Claude Code 0.6.1 adds", that the plugin
+update widened the tool-output grant they already have),
 what it would add (quote the "If approved" sentence), and that nothing more is
 sent unless they agree. Run `node <plugin-root>/scripts/sabia.mjs approve`
 **only** when the user explicitly says yes in this conversation. Never approve
@@ -98,7 +93,7 @@ Run `node <plugin-root>/scripts/sabia.mjs disconnect`. It revokes the current ke
 
 ## Safety
 
-- Keep `OTEL_LOGS_EXPORTER` at `none` unless the user explicitly chose raw capture, and `OTEL_TRACES_EXPORTER` at `none` unless the user explicitly chose tool output. Claude Code's log records and trace events carry conversational and tool content, and the default connector's promise is that only token metrics leave the machine.
+- Keep `OTEL_LOGS_EXPORTER` and `OTEL_TRACES_EXPORTER` at `none` unless the user explicitly chose tool output. Never set, change or remove `OTEL_LOG_USER_PROMPTS`. Claude Code's log records and trace events carry conversational and tool content, and the default connector's promise is that only token metrics leave the machine.
 - Never set `OTEL_LOG_RAW_API_BODIES` or `OTEL_LOG_ASSISTANT_RESPONSES`. Complete Messages API conversations are something no grant of this connector asks for, and assistant response text is explicitly outside the tool-output grant's consent copy. Let the script manage `OTEL_LOG_TOOL_CONTENT` and `OTEL_LOG_TOOL_DETAILS`; never set them by hand.
 - Keep the temporality preference on `delta`. Cumulative export restates running totals, which Sabia rejects rather than double-counting — the visible symptom is silently missing usage.
 - Preserve unrelated `settings.json` keys, and never rewrite the file if it fails to parse.

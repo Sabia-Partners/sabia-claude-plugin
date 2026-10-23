@@ -41,12 +41,7 @@ export function connectHandoff(value) {
   return value;
 }
 
-export function approvedHandoff(value, rawCapture = false) {
-  // Each signal reads its own field. Sabia serves both from the same
-  // authenticated endpoint, so they currently hold the same value — taking the
-  // metrics URL for the logs exporter would work today and break silently the
-  // moment they diverge. The logs URL is only required when this connection
-  // asked for raw capture; without it there is no logs exporter to configure.
+export function approvedHandoff(value) {
   if (
     value.status !== "approved" ||
     typeof value.organizationId !== "string" ||
@@ -54,10 +49,7 @@ export function approvedHandoff(value, rawCapture = false) {
     typeof value.ingestionKeyId !== "string" ||
     typeof value.ingestionKey !== "string" ||
     typeof value.otlpMetricsEndpoint !== "string" ||
-    !isHttpUrl(value.otlpMetricsEndpoint) ||
-    (rawCapture &&
-      (typeof value.otlpLogsEndpoint !== "string" ||
-        !isHttpUrl(value.otlpLogsEndpoint)))
+    !isHttpUrl(value.otlpMetricsEndpoint)
   ) {
     throw new Error(
       "Sabia returned an invalid approval response; restart the browser connection",
