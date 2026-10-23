@@ -106,7 +106,7 @@ describe("Claude Code connector hook", () => {
     expect(connectorEnvelope({ ...driveCreate, tool_name: "mcp__google_drive__search_files" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, hook_event_name: "PreToolUse" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, tool_response: { isError: true, content: driveCreate.tool_response } })).toBeNull();
-    expect(connectorEnvelope({ ...driveCreate, tool_name: "mcp__plugin_sabia-claude-code-otel_sabia-artifacts__report_artifact" })).toBeNull();
+    expect(connectorEnvelope({ ...driveCreate, tool_name: "mcp__plugin_sabia_sabia-artifacts__report_artifact" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, tool_name: "Write" })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, tool_use_id: undefined })).toBeNull();
     expect(connectorEnvelope({ ...driveCreate, session_id: "" })).toBeNull();

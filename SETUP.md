@@ -1,13 +1,13 @@
 # Setting up Sabia for Claude Code
 
-You need Claude Code with Node 22 or newer, and a Sabia workspace you can sign
-in to. The two connections below are independent. Set up either one, or both.
+You need Claude Code 2.1.81 or later with Node 22 or newer, and a Sabia
+workspace you can sign in to. The two connections below are independent. Set up either one, or both.
 
 ## 1. Install
 
 ```text
 /plugin marketplace add Sabia-Partners/sabia-claude-plugin
-/plugin install sabia-claude-code-otel@sabia
+/plugin install sabia@sabia
 ```
 
 ## 2. Connect native usage
@@ -26,14 +26,16 @@ read its environment, so it keeps exporting nothing.
 To check the connection, ask Claude for your Sabia status, or run
 `node scripts/sabia.mjs status` from the plugin directory.
 
-The default connection sends token counts only. Tool output and raw capture
-are separate grants, described in the [README](README.md#opt-in-capture-grants).
-Ask for one only if you mean to share what it adds.
+The default connection sends token counts only. Tool output is a separate
+grant, described in the [README](README.md#opt-in-tool-output-grant). Ask for it
+only if you mean to share what it adds. The plugin never turns on prompt text;
+the README's [Prompt text](README.md#prompt-text) section explains why and what
+the setting is.
 
 ## 3. Connect Output Reporting
 
 1. Run `/mcp` in Claude Code.
-2. Choose `plugin:sabia-claude-code-otel:sabia-artifacts`.
+2. Choose `plugin:sabia:sabia-artifacts`.
 3. Sign in to Sabia, pick your organization and approve Output Reporting metadata
    sharing.
 
@@ -50,7 +52,7 @@ this.
 
 | Symptom | Fix |
 | --- | --- |
-| Sign-in fails with a redirect error | OAuth uses a fixed callback on port `45711`. Free that port and retry. |
+| Sign-in says the server does not support dynamic client registration | Update Claude Code to 2.1.81 or later. |
 | Usage does not appear in Sabia | Start a new session after connecting. Check `status`. |
 | A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Widening also waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
 | `status` says Sabia revoked this device | Run `disconnect` to clean up, then connect again. |
@@ -60,4 +62,4 @@ For a Sabia deployment other than the default, pass `--base-url <url>` to
 `connect` or set `SABIA_APP_URL`. On a machine without a browser, use
 `configure --endpoint <url> --ingestion-key <key>` with a key issued in Sabia.
 
-Questions: [hello@sabiapartners.com](mailto:hello@sabiapartners.com).
+Questions: [hello@sabiapartners.ca](mailto:hello@sabiapartners.ca) or [sabiapartners.ca/contact](https://sabiapartners.ca/contact).

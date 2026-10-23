@@ -1,22 +1,41 @@
 # Changelog
 
-## 0.4.1 (unreleased)
+## Unreleased
 
 - The connector hook and the dashboard drop email addresses from connector identities. The Google Drive connector's `create_file` reply names the file's owner by email under the allowlisted `owner` key. A bare or padded address is dropped; a URL keeps its identity minus any userinfo, query parameter or fragment that carries one. Matches dashboard-langfuse#268 through the shared contract.
 - Work Source identity paths go through the same scrubber, so a URL id keeps its identity minus an address instead of being dropped whole. Addresses in any script are caught, and a repeated query key keeps its safe values. Pinned by both shared fixtures.
 - Pin the real Drive connector's `create_file` arguments (`title`, `textContent`, `contentMimeType`) and reply (a File object) in the tests and the shared contract.
 - The hook still needs the state and settings the `connect` flow writes. Claude Code withholds `OTEL_*` variables from hooks, so machines whose telemetry was set up by hand or by managed settings must run `connect` for connector creations to be reported.
+- Tool output disclosure: Claude Code 2.1.283 exports the results of connector (MCP) tools, WebFetch and WebSearch under `OTEL_LOG_TOOL_CONTENT`, which the tool-output grant sets. The `connect --tool-output` notice, README and `connect-sabia` skill now say so instead of promising connector replies are never sent (dashboard-langfuse#330).
 
-## 0.4.0 (unreleased)
+## 0.7.1
+
+- **Reports use `report_artifact_v3`.** The skill now asks `get_reporting_contract` first and reports with `report_artifact_v3`, as Sabia requires; Sabia refuses new reports through the older `report_artifact`. The binding hook also links v3 reports to the Claude Code session that made them.
+
+## 0.7.0
+
+- **Sign-in uses Claude's published identity.** Output Reporting no longer pins the `sabia-claude-code` client or callback port `45711`, so sign-in works when that port is busy. Needs Claude Code 2.1.81 or later. After updating, `/mcp` may ask you to sign in once more; the earlier connection stays under Settings → Connected Tools in Sabia until you revoke it.
+
+## 0.6.1
+
+- **Back at the repository root.** The Claude Desktop extension and the Cowork helper moved, with their history, to [Sabia-Partners/sabia-claude-desktop](https://github.com/Sabia-Partners/sabia-claude-desktop), so this repository is the plugin alone. Anthropic's directory holds every version of a plugin in a subfolder whose hooks run Node scripts for a reviewer; at the root it does not. The marketplace entry is `./` again.
+- **Tool output now includes Claude Code's tool events.** The tool-output grant also turns on Claude Code's log export, which carries each tool's arguments, MCP server and tool names and skill names. Sabia uses them to identify connector updates and the skills a session used, which 0.6.0 lost along with raw capture. Claude Code redacts prompt text in those events. A device set up for tool output before 0.6.1 is asked to approve the wider export at its next session start, like any other widening, and a log export left on without the grant is turned off.
+- **The plugin no longer manages `OTEL_LOG_USER_PROMPTS`.** Prompt text reaches Sabia only if the person sets it themselves, and Sabia keeps it only when their organization granted raw capture. `status` says when it is set. Versions before 0.6.0 wrote it under raw capture; the first sync or disconnect after upgrading hands it back once, putting back the person's earlier value, and never touches it again.
+
+## 0.6.0 (unreleased)
+
+Prepares the plugin for Anthropic's plugin directory.
+
+- **Renamed to `sabia`** (shown as "Sabia"). `sabia-claude-code-otel` read as one of Anthropic's own names. The marketplace's `renames` entry moves existing installs. The native usage connection lives in `~/.claude` and is kept; Output Reporting needs one new `/mcp` sign-in, now as `plugin:sabia:sabia-artifacts`. Claude Code keeps each plugin's data directory under its id, so report bindings still queued under the old name and the cached connector contract are left behind; the contract is fetched again, and a binding that never reached Sabia only loses its link to the session's tokens.
+- **The Claude Code plugin now lives in `plugins/sabia`**, so the directory lists only the plugin, apart from the Desktop extension and its Cowork log reader. The marketplace entry points at `./plugins/sabia`.
+- **Raw capture is gone from the plugin.** `--raw-capture` is refused, a raw-capture grant on the key is ignored, and a device an earlier version set up for prompt export is narrowed back to token counts at its next session start. The plugin never exports prompt text or assistant responses.
+- Directory listing fields in `plugin.json`: icon, documentation, support, privacy policy and terms links. The manifest no longer repeats the default `hooks`, `skills` and `mcpServers` locations.
+- The plugin README lists every process the plugin runs, every request it makes and every file it writes.
+- Contact address is `hello@sabiapartners.ca` everywhere; `sabiapartners.com` does not exist. The Desktop extension's privacy link pointed at a page that returned 404 and now points at `sabiapartners.ca/legal/privacy`.
+
+## 0.5.0
 
 - Rename the reporting feature to Output Reporting and clarify completed actions on durable Artifacts. Tool names, installed identity, OAuth grants and reporting behavior stay compatible (dashboard-langfuse#182).
-
-- **Sabia for Claude Desktop** (`desktop-extension/`, released as `sabia.mcpb`): a Desktop Extension that shares Cowork usage on any Claude plan with no terminal. Claude Desktop runs it on the host; on first start it opens Sabia's approval page once, then syncs at start-up and every ten minutes while Claude is open. Tools: `sabia_status`, `sabia_connect`, `sabia_sync_now`. Content sharing is an install-time toggle and still needs approval in Sabia. It shares state with `connect --local`, so a device never holds two keys. The release workflow attaches `sabia.mcpb` so Sabia can link to `releases/latest/download/sabia.mcpb`.
-
-- Share Cowork on Pro and Max plans: `cowork/scripts/sabia.mjs connect --local` reads the desktop app's local Cowork session logs (`local-agent-mode-sessions/**/audit.jsonl`) and sends each turn's per-model token totals, call count, time and session id to the Cowork endpoint under the person's own key, then syncs every ten minutes through a macOS LaunchAgent. Totals come from each turn's `result.modelUsage`; the per-message `usage` is a streaming-start snapshot that under-reports output about thirtyfold and is never summed. `--content` asks for prompts, responses and tool inputs and results, sent only once an owner or administrator approves the grant. Needs dashboard-langfuse#147 for the per-turn request count.
-
-- Report connector mutations: a `PostToolUse` hook (`scripts/sabia-connector-hook.mjs`) sends the identifiers from the reply of a successful Google Drive or GitHub connector create or update — file or pull request ids, names and links — under the tool-output grant only, to `/api/v1/telemetry/claude-code/hooks`. Claude Code exports connector arguments but never their results, so a Doc created through the Drive connector was unidentifiable. Reads, other connectors, error-shaped replies (including errors wrapped in content blocks) and Sabia's own tools send nothing. No spool; a few bounded retries, then silence. Moved from dashboard-langfuse#95.
-- `contracts/connector-hook/v1.json` pins the hook's operation allowlist and identity projection against the dashboard's.
 - The connector hook fetches its contract from Sabia (`GET /api/v1/telemetry/claude-code/hooks/contract`, same ingestion key as the hook route) instead of relying on the vendored allowlist alone, so a new Work Source does not need a plugin release. The contract is validated whole (types, sizes, the server's identity-path grammar) and a malformed one is ignored, never partly applied. It is cached for 24 hours next to the plugin's other state, without the key; when Sabia cannot be reached the hook uses the last good copy, then the vendored v1 contract, and waits 15 minutes before trying again. The fetch is bounded to 1.5 seconds and is only attempted on machines with the tool-output grant. Needs dashboard-langfuse#286 deployed; before that the hook keeps working on v1.
 - Operation matching is case-insensitive on both sides, like the server's `toolNameMatchesOperation`, so `createJiraIssue` and `API-post-page` match as connectors name them.
 - The projector applies the contract's `identityPaths` as the server does: only for the operations that declare them, on the declared side, bounded identity literals only, arrays only where the path has `[]`, and an ambiguous single value dropped. Values go under `identity.<side>.work_source_identity.<source>.<as>`, which the server re-validates; the hook envelope is otherwise unchanged. `contracts/connector-hook/identity-paths-v1.json` holds parity cases generated by running the dashboard's projector.
@@ -24,8 +43,19 @@
 - The hook's 6-second budget now starts before the contract fetch. The retry pause holds when the cache cannot be written (a marker in the temporary directory, owner-checked, holding only the time). The cache is read without following symlinks, only as a regular file whose size is checked before reading, and written through a fresh `wx` temporary file. A cached contract wider than the vendored v1 contract applies only with an HMAC proof, keyed by the ingestion key, that it is the contract Sabia served.
 - Only a successful fetch writes the contract cache; a failed refresh records its retry pause in the temporary-directory marker alone, so it can never replace a contract another hook process fetched meanwhile (it uses that contract instead). An unproved cache (no proof, or one from a rotated key) may not add an operation beyond the vendored v1 list either, so a read such as `search_files` is never reported as a mutation from it.
 - Mirror the dashboard's ambiguous-flag rule, pinned by the byte-copied `contracts/connector-hook/identity-paths-v3.json` (replaces v2): a `flag` whose copies disagree is kept as JSON `null` under its `as` instead of being dropped, so ambiguous stays distinct from absent; ids are still dropped. A supplied subtree may carry `null` only for a flag name (for an id, or inside an array, it rejects the whole namespace); a marker the projector derives overrides a supplied boolean, and a supplied marker stays ambiguous. The contract shape is unchanged.
+- Count Cowork usage once when a turn carries the previous turn's totals over. From Claude Code 2.1.288 a resumed session restores them (a queued follow-up can too), so `result.modelUsage` re-reported every earlier turn and the local collector overcounted, by about fourfold on a real session. Each session now keeps a baseline in the cursor and a carried turn is sent as the difference; fresh turns are sent whole as before. A cursor saved by 0.4.0 rebuilds its baselines without resending anything. Rows already sent are not corrected (#14, #15).
+- README: set up Sabia for Claude Code cloud sessions (#13).
 
-## 0.3.0 (unreleased)
+## 0.4.0
+
+- **Sabia for Claude Desktop** (`desktop-extension/`, released as `sabia.mcpb`): a Desktop Extension that shares Cowork usage on any Claude plan with no terminal. Claude Desktop runs it on the host; on first start it opens Sabia's approval page once, then syncs at start-up and every ten minutes while Claude is open. Tools: `sabia_status`, `sabia_connect`, `sabia_sync_now`. Content sharing is an install-time toggle and still needs approval in Sabia. It shares state with `connect --local`, so a device never holds two keys. The release workflow attaches `sabia.mcpb` so Sabia can link to `releases/latest/download/sabia.mcpb`.
+
+- Share Cowork on Pro and Max plans: `cowork/scripts/sabia.mjs connect --local` reads the desktop app's local Cowork session logs (`local-agent-mode-sessions/**/audit.jsonl`) and sends each turn's per-model token totals, call count, time and session id to the Cowork endpoint under the person's own key, then syncs every ten minutes through a macOS LaunchAgent. Totals come from each turn's `result.modelUsage`; the per-message `usage` is a streaming-start snapshot that under-reports output about thirtyfold and is never summed. `--content` asks for prompts, responses and tool inputs and results, sent only once an owner or administrator approves the grant. Needs dashboard-langfuse#147 for the per-turn request count.
+
+- Report connector mutations: a `PostToolUse` hook (`scripts/sabia-connector-hook.mjs`) sends the identifiers from the reply of a successful Google Drive or GitHub connector create or update — file or pull request ids, names and links — under the tool-output grant only, to `/api/v1/telemetry/claude-code/hooks`. Claude Code exports connector arguments but never their results, so a Doc created through the Drive connector was unidentifiable. Reads, other connectors, error-shaped replies (including errors wrapped in content blocks) and Sabia's own tools send nothing. No spool; a few bounded retries, then silence. Moved from dashboard-langfuse#95.
+- `contracts/connector-hook/v1.json` pins the hook's operation allowlist and identity projection against the dashboard's.
+
+## 0.3.0
 
 - A capture grant widened in Sabia no longer applies on its own. Sync applies a narrower grant and records a wider one as pending, announcing it at every session start until the person using the device runs `approve`. `status` shows what is waiting.
 - License the plugin under MIT and prepare it for the Claude plugin directory: a new README covering what leaves the machine, a SETUP guide and a private vulnerability reporting route.
