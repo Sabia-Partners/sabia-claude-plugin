@@ -4808,6 +4808,70 @@
         },
         "omissionReason": null
       }
+    },
+    {
+      "name": "url id keeps its identity minus a literal address",
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "pages": [
+              {
+                "url": "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef?contact=ada@example.com"
+              }
+            ]
+          }
+        },
+        "toolName": "mcp__notion__notion-create-pages"
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "work_source_identity": {
+              "notion": {
+                "page_url": [
+                  "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef"
+                ]
+              }
+            }
+          }
+        },
+        "omissionReason": null
+      }
+    },
+    {
+      "name": "url id drops an encoded address and keeps the rest of the query",
+      "input": {
+        "inputProjection": null,
+        "resultProjection": {
+          "output": {
+            "pages": [
+              {
+                "url": "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef?contact=ada%40example.com&v=1"
+              }
+            ]
+          }
+        },
+        "toolName": "mcp__notion__notion-create-pages"
+      },
+      "expected": {
+        "projection": {
+          "version": 1,
+          "input": null,
+          "result": {
+            "work_source_identity": {
+              "notion": {
+                "page_url": [
+                  "https://www.notion.so/acme/Plan-0123456789abcdef0123456789abcdef?v=1"
+                ]
+              }
+            }
+          }
+        },
+        "omissionReason": null
+      }
     }
   ]
 }

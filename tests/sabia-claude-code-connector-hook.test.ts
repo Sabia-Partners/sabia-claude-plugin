@@ -11,7 +11,7 @@ import {
   CONTRACT_RETRY_MS, CONTRACT_TIMEOUT_MS, CONTRACT_TTL_MS,
   connectorEnvelope, isMutation, loadConnectorContract, MUTATIONS, parseConnectorContract, parseIdentityPath,
   PRIMARY_IDENTITY_KEYS as PLUGIN_PRIMARY_KEYS, projectMutationIdentity as pluginProject, retryMarkerPath, runConnectorHook,
-  VENDORED_CONTRACT, winningIdentityPathOperations,
+  scrubIdentityScalar, VENDORED_CONTRACT, winningIdentityPathOperations,
 } from "../scripts/sabia-connector-hook.mjs";
 
 // The hook reads tool_name, tool_use_id, session_id, tool_input and
@@ -66,6 +66,20 @@ const sabia = (post: ReturnType<typeof vi.fn> = vi.fn(async () => ok()), contrac
 const run = (event: unknown, options: Record<string, unknown> = {}) => runConnectorHook(event, { claudeHome: directory, sleep: async () => {}, ...options });
 const context = { token, endpoint: "https://app2.sabiapartners.ca/api/v1/artifact-reporting/claude-code-invocation" };
 const sentBody = (post: ReturnType<typeof vi.fn>) => JSON.parse(post.mock.calls[0][1].body);
+
+// The reply of Anthropic's Google Drive connector to create_file, captured
+// 2026-10-05: a File object with the owner's email and the viewer link.
+const realFileId = "1f1PBpyfD9wKdh8a26euvx6zGaywithEsCYPAKXLZw_I";
+const realDriveCreate = {
+  ...fixture, tool_name: "mcp__0daee481-402a-4b6a-ac3e-d75d71c0a17e__create_file", tool_use_id: "toolu_01RealDriveCreate",
+  tool_input: { title: "Q4 pipeline review", textContent: "Confidential: renewal risk for Acme", contentMimeType: "text/plain" },
+  tool_response: {
+    canAddChildren: false, createdTime: "2026-10-06T00:00:38.810Z", fileSize: "1", id: realFileId,
+    mimeType: "application/vnd.google-apps.document", modifiedTime: "2026-10-06T00:00:38.426Z", owner: "lucas@example.com",
+    parentId: "0ACF99XauTAp5Uk9PVA", title: "Q4 pipeline review",
+    viewUrl: `https://docs.google.com/document/d/${realFileId}/edit?usp=drivesdk&ouid=102828164600635190347`, viewedByMeTime: "2026-10-06T00:00:39.634Z",
+  },
+};
 
 beforeEach(async () => {
   vi.stubEnv("CLAUDE_PLUGIN_DATA", "");
@@ -152,6 +166,46 @@ describe("Claude Code connector hook", () => {
     for (const event of [{ ...driveCreate, hook_event_name: "PreToolUse" }, { ...driveCreate, tool_name: "Bash" }, { ...driveCreate, tool_response: { isError: true } }]) {
       expect(await run(event, { fetch })).toEqual({ sent: false, reason: "not_a_mutation" });
     }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("identifies a Doc from the real Drive connector's reply, raw or as a content block, and drops the owner and the body", () => {
+    for (const tool_response of [realDriveCreate.tool_response, [{ type: "text", text: JSON.stringify(realDriveCreate.tool_response) }]]) {
+      const text = JSON.stringify(connectorEnvelope({ ...realDriveCreate, tool_response }));
+      expect(text).toContain(realFileId);
+      expect(text).toContain("Q4 pipeline review");
+      for (const secret of ["lucas@example.com", "Confidential", "renewal risk", "ouid=", "0ACF99XauTAp5Uk9PVA"]) expect(text, secret).not.toContain(secret);
+    }
+  });
+  it("drops padded owner emails and keeps URL identities, like the dashboard", () => {
+    expect(scrubIdentityScalar(" lucas@example.com ")).toBeNull();
+    expect(scrubIdentityScalar("sabia-partners")).toBe("sabia-partners");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=lucas@example.com")).toBe("https://github.com/acme/app/pull/42");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?usp=sharing")).toBe("https://github.com/acme/app/pull/42?usp=sharing");
+    // An unrelated malformed escape must not hide an encoded address.
+    for (const tail of ["note=100%", "tag=%FF"]) {
+      const kept = scrubIdentityScalar(`https://github.com/acme/app/pull/42?contact=lucas%40example.com&${tail}`);
+      expect(new URL(kept).searchParams.get("contact"), tail).toBeNull();
+      expect(kept.startsWith("https://github.com/acme/app/pull/42"), tail).toBe(true);
+    }
+    const padded = { ...realDriveCreate, tool_response: [{ type: "text", text: JSON.stringify({ ...realDriveCreate.tool_response, owner: " lucas@example.com " }) }] };
+    expect(JSON.stringify(connectorEnvelope(padded))).not.toContain("lucas@example.com");
+  });
+  it("drops internationalized addresses and keeps a repeated key's safe values, like the dashboard", () => {
+    expect(scrubIdentityScalar("josé@exämple.de")).toBeNull();
+    for (const value of ["डाटामेल@डाटामेल.भारत", "ஒருவர்@example.com", "jose\u0301@example.de", "user@exa\u0301mple.de", "می\u200Cخواهم@example.ir"]) {
+      expect(scrubIdentityScalar(value), value).toBeNull();
+    }
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?contact=jos%C3%A9%40ex%C3%A4mple.de&tab=files")).toBe("https://github.com/acme/app/pull/42?tab=files");
+    expect(scrubIdentityScalar("https://github.com/acme/app/pull/42?tab=files&tab=lucas@example.com&tab=commits")).toBe("https://github.com/acme/app/pull/42?tab=files&tab=commits");
+    expect(scrubIdentityScalar("owner/repo@0123456789abcdef")).toBe("owner/repo@0123456789abcdef");
+  });
+  it("never reads the credential from the hook's environment, which Claude Code withholds OTEL_* from", async () => {
+    await rm(join(directory, "sabia-otel-state.json"));
+    const fetch = vi.fn();
+    process.env.OTEL_EXPORTER_OTLP_HEADERS = `Authorization=Bearer ${token}`;
+    try {
+      expect(await run(realDriveCreate, { fetch })).toEqual({ sent: false, reason: "no_credential" });
+    } finally { delete process.env.OTEL_EXPORTER_OTLP_HEADERS; }
     expect(fetch).not.toHaveBeenCalled();
   });
 });
