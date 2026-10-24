@@ -130,7 +130,10 @@ async function connect() {
     options["base-url"] || process.env.SABIA_APP_URL || DEFAULT_BASE_URL,
   );
   refuseRawCapture();
-  const traceCapture = Boolean(options["tool-output"]);
+  // Tool output is asked for unless the person opts out. It is the grant that
+  // puts a session's work on Sabia's Output page; token counts alone show
+  // spend, not work.
+  const traceCapture = !options["no-tool-output"];
   const existingState = await readJson(statePath);
   const deviceId = existingState?.deviceId || randomUUID();
   const verifier = randomBytes(32).toString("base64url");
@@ -157,7 +160,7 @@ async function connect() {
   );
   if (traceCapture) {
     process.stdout.write(
-      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents, and from Claude Code 2.1.283 the results of connector (MCP) tools, WebFetch and WebSearch, which can include document text, email bodies and web pages — and its tool events with their arguments, MCP tool names and skill names. Sabia will keep a reduced per-tool extract. Prompt text stays redacted.\n",
+      "Tool output requested: Claude Code will export tool result bodies — command output and possibly file contents, and from Claude Code 2.1.283 the results of connector (MCP) tools, WebFetch and WebSearch, which can include document text, email bodies and web pages — and its tool events with their arguments, MCP tool names and skill names. Sabia will keep a reduced per-tool extract. Prompt text stays redacted. Run connect --no-tool-output to share token counts only.\n",
     );
   }
   process.stdout.write(`Open this URL to share Claude Code usage with Sabia:\n${handoff.verificationUri}\n`);
@@ -167,6 +170,16 @@ async function connect() {
   }
 
   const approved = await pollForApproval(baseUrl, handoff, verifier);
+  // Content leaves this device only on a grant Sabia confirms: it is withheld
+  // when the approver is not an owner or administrator, and traces sent
+  // without it cannot be called back.
+  const grant = traceCapture
+    ? await readInitialGrant(approved.otlpMetricsEndpoint, approved.ingestionKey)
+    : "withheld";
+  if (grant === "revoked") {
+    throw new Error("Sabia revoked this device's new key before it was installed; run connect again");
+  }
+  const exportTraces = grant === "granted";
   await installEnv({
     deviceId,
     metricsEndpoint: approved.otlpMetricsEndpoint,
@@ -176,12 +189,21 @@ async function connect() {
     ingestionKeyId: approved.ingestionKeyId,
     organizationId: approved.organizationId,
     organizationName: approved.organizationName,
-    traceCapture,
+    traceCapture: exportTraces,
+    // The person asked for tool output here, so a grant Sabia confirms later
+    // is applied at a session start without asking again (sync).
+    toolOutputRequested: traceCapture && !exportTraces,
     existingState,
   });
 
+  const withheld =
+    grant === "unknown"
+      ? "Sabia's tool-output grant could not be read yet, so tool output stays off; it turns on at a session start once Sabia confirms it. "
+      : traceCapture && !exportTraces
+        ? "Tool output was not granted: only an owner or administrator of the organization can grant it, and it turns on at a session start once they do. "
+        : "";
   process.stdout.write(
-    `Connected Claude Code telemetry to ${approved.organizationName}. ${describeCapture({ traceCapture })} Start a new Claude Code session to pick up the exporter.\n`,
+    `Connected Claude Code telemetry to ${approved.organizationName}. ${withheld}${describeCapture({ traceCapture: exportTraces })} Start a new Claude Code session to pick up the exporter.\n`,
   );
 }
 
@@ -390,6 +412,17 @@ async function sync() {
     );
   }
 
+  // Tool output this person asked for at connect, which Sabia has now
+  // granted: their connect was the consent, so it is applied, not held.
+  if (pending.traceCapture && state?.toolOutputRequested && !current.traceCapture) {
+    await applyCapture(state, granted, { traceCapture: true });
+    if (state?.pendingCapture) await recordPending(null);
+    process.stdout.write(
+      `Sabia granted the tool output requested at connect. ${describeCapture({ traceCapture: true })} The change applies from the next Claude Code session.\n`,
+    );
+    return;
+  }
+
   if (pending.traceCapture) {
     await recordPending(pending);
     process.stdout.write(pendingNotice(state, granted, { upgrade: current.traceCapture && current.logsMissing }));
@@ -490,6 +523,33 @@ async function readGrants(env, { failOpen, quiet }) {
   };
 }
 
+/**
+ * The tool-output grant on a key just issued: "granted", "withheld",
+ * "revoked", or "unknown" when Sabia could not say after a few tries. Unknown
+ * is never treated as granted.
+ */
+async function readInitialGrant(metricsEndpoint, token) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await delay(2_000);
+    let response;
+    try {
+      response = await fetch(new URL("/api/v1/telemetry/connection", metricsEndpoint), {
+        redirect: "manual",
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+    } catch {
+      continue;
+    }
+    if (response.status === 401) return "revoked";
+    if (!response.ok) continue;
+    const body = await response.json().catch(() => null);
+    if (!plainObject(body)) continue;
+    return body.traceCapture === true ? "granted" : "withheld";
+  }
+  return "unknown";
+}
+
 function currentCapture(env) {
   const traceCapture = env.OTEL_TRACES_EXPORTER === "otlp";
   const logs = env.OTEL_LOGS_EXPORTER === "otlp";
@@ -586,6 +646,7 @@ async function installEnv(input) {
         organizationName: input.organizationName,
         endpoint: input.metricsEndpoint,
         previousEnv,
+        ...(input.toolOutputRequested ? { toolOutputRequested: true } : {}),
         connectedAt: new Date().toISOString(),
       },
       null,
@@ -719,7 +780,7 @@ function parseArguments(args) {
     const argument = args[index];
     if (!argument.startsWith("--")) throw new Error(`unexpected argument: ${argument}`);
     const key = argument.slice(2);
-    if (["no-open", "local-only", "raw-capture", "tool-output", "quiet"].includes(key)) {
+    if (["no-open", "local-only", "raw-capture", "tool-output", "no-tool-output", "quiet"].includes(key)) {
       options[key] = true;
     } else {
       const value = args[index + 1];
@@ -775,20 +836,22 @@ function delay(milliseconds) {
 
 function usage() {
   process.stdout.write(`Usage:
-  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--tool-output]
+  sabia.mjs connect [--base-url URL] [--device-name NAME] [--no-open] [--no-tool-output]
   sabia.mjs status
   sabia.mjs sync [--quiet]
   sabia.mjs approve
   sabia.mjs disconnect [--local-only]
   sabia.mjs configure --endpoint URL --ingestion-key KEY [--organization NAME] [--tool-output]
 
-  Token counts are always exported. Prompt text is never exported. The
-  tool-output grant is approved separately in the browser. Grants changed
+  Token counts are always exported. Prompt text is never exported. connect
+  asks for the tool-output grant unless --no-tool-output is given; an owner or
+  administrator approves it in the browser. configure exports tool output
+  only with --tool-output. Grants changed
   later in Sabia Settings reach this device through sync, which the plugin
   runs at every session start. A narrower grant applies on its own; a wider
   one waits until the person using this device runs approve.
 
-  --tool-output exports tool result bodies — command output and the command
+  Tool output exports tool result bodies — command output and the command
   lines that produced it — and asks Sabia to keep a reduced per-tool extract.
   File tool contents are dropped before storage. Prompt text and assistant
   responses are not exported by this flag. Claude Code does not export MCP

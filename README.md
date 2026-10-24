@@ -56,21 +56,25 @@ Sabia keeps and for how long.
 | Connection | Sent to Sabia | Never sent |
 | --- | --- | --- |
 | **Output Reporting** | For each completed piece of work: an action, a short title, the artifact type, its provider reference and identifiers, and available evidence references. | Document bodies, prompts, transcripts, file contents. |
-| **Native usage** (default) | Token counts from Claude Code's OpenTelemetry **metrics** export. | Prompts, responses, tool arguments, file contents. Log and trace exporters stay `none`. |
+| **Native usage** | Token counts from Claude Code's OpenTelemetry **metrics** export, plus the tool-output grant below unless you connect with `--no-tool-output`. | Prompt text, assistant responses, raw API bodies. |
 | **Report binding** (both connected) | The report's `tool_use_id` and a SHA-256 of the session id, hashed on this machine. | The raw session id, transcript, tool input, usage values. |
 
 Titles and references can still contain sensitive information, so review what
 Claude reports the same way you would review a commit message.
 
-### Opt-in tool-output grant
+### Tool-output grant
 
-One more grant widens native usage. It is off by default, needs an owner or
-administrator of your Sabia organization to approve it in the browser, and is
-recorded on the connection's key rather than on this machine.
+One more grant widens native usage. `connect` asks for it unless you pass
+`--no-tool-output`. It needs an owner or administrator of your Sabia
+organization to approve it in the browser, and is recorded on the connection's
+key rather than on this machine. Content is exported only once Sabia confirms
+the grant: when it is withheld or cannot be read, `connect` leaves the log and
+trace export off, and the session-start sync turns it on once Sabia confirms
+it.
 
 | Grant | Adds | Still never sent |
 | --- | --- | --- |
-| **Tool output** (`--tool-output`) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. From Claude Code 2.1.283 this includes the results of connector (MCP) tools, WebFetch and WebSearch, so document text, email bodies and web pages a tool returned can be sent. Claude Code's tool events from its log export, with each tool's arguments, MCP server and tool names, and skill names, so a connector update and the skills a session used can be identified. Claude Code redacts prompt text in those events. Sabia keeps a reduced extract per tool and drops file-tool bodies. For a successful connector action that creates or changes something in a supported Work Source (Google Drive and GitHub, plus the sources Sabia lists in its connector hook contract), a local hook also sends the identifiers from its reply: file, pull request or record ids, keys, names and links. | Prompt text, assistant responses, raw API bodies. |
+| **Tool output** (default; `--no-tool-output` to opt out) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. From Claude Code 2.1.283 this includes the results of connector (MCP) tools, WebFetch and WebSearch, so document text, email bodies and web pages a tool returned can be sent. Claude Code's tool events from its log export, with each tool's arguments, MCP server and tool names, and skill names, so a connector update and the skills a session used can be identified. Claude Code redacts prompt text in those events. Sabia keeps a reduced extract per tool and drops file-tool bodies. For a successful connector action that creates or changes something in a supported Work Source (Google Drive and GitHub, plus the sources Sabia lists in its connector hook contract), a local hook also sends the identifiers from its reply: file, pull request or record ids, keys, names and links. | Prompt text, assistant responses, raw API bodies. |
 
 Everyone in your Sabia organization can read what this grant captures.
 
