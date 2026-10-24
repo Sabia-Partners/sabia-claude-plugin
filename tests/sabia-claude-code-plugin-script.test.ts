@@ -746,3 +746,122 @@ describe("Sabia Claude Code plugin settings management", () => {
     ).rejects.toThrow(/must be a Sabia ingestion key/);
   });
 });
+
+describe("Sabia Claude Code plugin connect", () => {
+  let server: Server;
+  let baseUrl: string;
+  let connectBodies: Array<{ rawCapture?: boolean; traceCapture?: boolean }>;
+  let grants: { rawCapture: boolean; traceCapture: boolean } | "unavailable";
+
+  beforeEach(async () => {
+    connectBodies = [];
+    grants = { rawCapture: true, traceCapture: true };
+    server = createServer((request, response) => {
+      const send = (status: number, body: unknown) => {
+        response.writeHead(status, { "content-type": "application/json" });
+        response.end(JSON.stringify(body));
+      };
+      if (request.method === "POST" && request.url === "/api/v1/telemetry/connect") {
+        let raw = "";
+        request.on("data", (chunk) => (raw += chunk));
+        request.on("end", () => {
+          connectBodies.push(JSON.parse(raw));
+          send(201, {
+            sessionId: "session-1",
+            verificationUri: `${baseUrl}/connect/telemetry/session-1`,
+            expiresAt: new Date(Date.now() + 60_000).toISOString(),
+            intervalSeconds: 1,
+          });
+        });
+        return;
+      }
+      if (request.url?.startsWith("/api/v1/telemetry/connect/session-1")) {
+        send(200, {
+          status: "approved",
+          organizationId: "org-1",
+          organizationName: "Acme",
+          ingestionKeyId: "key-1",
+          ingestionKey,
+          otlpMetricsEndpoint: `${baseUrl}/api/v1/telemetry/otlp`,
+          otlpLogsEndpoint: `${baseUrl}/api/v1/telemetry/otlp`,
+        });
+        return;
+      }
+      if (request.url === "/api/v1/telemetry/connection") {
+        if (grants === "unavailable") {
+          send(503, { error: { code: "UNAVAILABLE", message: "try later" } });
+          return;
+        }
+        send(200, {
+          source: "claude_code",
+          ...grants,
+          otlpMetricsEndpoint: `${baseUrl}/api/v1/telemetry/otlp`,
+          otlpLogsEndpoint: `${baseUrl}/api/v1/telemetry/otlp`,
+          tracesEndpoint: `${baseUrl}/api/v1/telemetry/traces`,
+        });
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+
+  function connect(...flags: string[]) {
+    return sabia("connect", "--base-url", baseUrl, "--no-open", ...flags);
+  }
+
+  it("asks for tool output by default and exports it at once when granted", async () => {
+    const { stdout } = await connect();
+
+    expect(connectBodies).toEqual([
+      expect.objectContaining({ rawCapture: false, traceCapture: true }),
+    ]);
+    // Sabia counts tokens from traces once tool output is granted, so the
+    // export has to start with the grant, not at a later approve.
+    const env = (await readSettings()).env ?? {};
+    expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
+    expect(env.OTEL_LOGS_EXPORTER).toBe("otlp");
+    expect(env.OTEL_LOG_USER_PROMPTS).toBeUndefined();
+    expect(stdout).toContain("--no-tool-output");
+    expect(stdout).toContain("Tool result bodies");
+  });
+
+  it("leaves the export off and says so when tool output is withheld", async () => {
+    grants = { rawCapture: false, traceCapture: false };
+
+    const { stdout } = await connect();
+
+    const env = (await readSettings()).env ?? {};
+    expect(env.OTEL_TRACES_EXPORTER).toBe("none");
+    expect(env.OTEL_LOGS_EXPORTER).toBe("none");
+    expect(env.OTEL_METRICS_EXPORTER).toBe("otlp");
+    expect(stdout).toContain("Tool output was not granted");
+  });
+
+  it("exports tool output when the grant cannot be read back", async () => {
+    // Too little export loses usage; traces Sabia did not grant are refused
+    // and the next sync narrows the export.
+    grants = "unavailable";
+
+    await connect();
+
+    expect((await readSettings()).env?.OTEL_TRACES_EXPORTER).toBe("otlp");
+  });
+
+  it("shares token counts only with --no-tool-output", async () => {
+    await connect("--no-tool-output");
+
+    expect(connectBodies).toEqual([
+      expect.objectContaining({ rawCapture: false, traceCapture: false }),
+    ]);
+    expect((await readSettings()).env?.OTEL_TRACES_EXPORTER).toBe("none");
+  });
+});

@@ -26,9 +26,9 @@ read its environment, so it keeps exporting nothing.
 To check the connection, ask Claude for your Sabia status, or run
 `node scripts/sabia.mjs status` from the plugin directory.
 
-The default connection sends token counts only. Tool output is a separate
-grant, described in the [README](README.md#opt-in-tool-output-grant). Ask for it
-only if you mean to share what it adds. The plugin never turns on prompt text;
+The connection sends token counts and asks for tool output, a separate grant
+described in the [README](README.md#tool-output-grant). Connect with
+`--no-tool-output` to share token counts only. The plugin never turns on prompt text;
 the README's [Prompt text](README.md#prompt-text) section explains why and what
 the setting is.
 
