@@ -751,7 +751,7 @@ describe("Sabia Claude Code plugin connect", () => {
   let server: Server;
   let baseUrl: string;
   let connectBodies: Array<{ rawCapture?: boolean; traceCapture?: boolean }>;
-  let grants: { rawCapture: boolean; traceCapture: boolean } | "unavailable";
+  let grants: { rawCapture: boolean; traceCapture: boolean } | "unavailable" | "revoked";
 
   beforeEach(async () => {
     connectBodies = [];
@@ -790,6 +790,10 @@ describe("Sabia Claude Code plugin connect", () => {
       if (request.url === "/api/v1/telemetry/connection") {
         if (grants === "unavailable") {
           send(503, { error: { code: "UNAVAILABLE", message: "try later" } });
+          return;
+        }
+        if (grants === "revoked") {
+          send(401, { error: { code: "UNAUTHORIZED", message: "revoked" } });
           return;
         }
         send(200, {
@@ -846,14 +850,60 @@ describe("Sabia Claude Code plugin connect", () => {
     expect(stdout).toContain("Tool output was not granted");
   });
 
-  it("exports tool output when the grant cannot be read back", async () => {
-    // Too little export loses usage; traces Sabia did not grant are refused
-    // and the next sync narrows the export.
+  it("keeps content export off while the grant cannot be read, then applies it once Sabia confirms it", async () => {
+    // Content sent without a grant cannot be called back, so an unreadable
+    // grant is never treated as consent from Sabia.
     grants = "unavailable";
 
+    const { stdout } = await connect();
+
+    let env = (await readSettings()).env ?? {};
+    expect(env.OTEL_TRACES_EXPORTER).toBe("none");
+    expect(env.OTEL_LOGS_EXPORTER).toBe("none");
+    expect(stdout).toContain("could not be read yet");
+
+    // The person asked for it at connect, so the confirmed grant is applied
+    // at the next session start without a separate approve.
+    grants = { rawCapture: true, traceCapture: true };
+    const sync = await sabia("sync", "--quiet");
+    env = (await readSettings()).env ?? {};
+    expect(env.OTEL_TRACES_EXPORTER).toBe("otlp");
+    expect(env.OTEL_LOGS_EXPORTER).toBe("otlp");
+    expect(sync.stdout).toContain("granted the tool output requested at connect");
+    expect(JSON.parse(await readFile(statePath, "utf8"))).not.toHaveProperty("toolOutputRequested");
+  }, 20_000);
+
+  it("keeps a withheld grant off until an administrator grants it, without asking again", async () => {
+    grants = { rawCapture: false, traceCapture: false };
     await connect();
 
+    await sabia("sync", "--quiet");
+    expect((await readSettings()).env?.OTEL_TRACES_EXPORTER).toBe("none");
+
+    grants = { rawCapture: false, traceCapture: true };
+    await sabia("sync", "--quiet");
     expect((await readSettings()).env?.OTEL_TRACES_EXPORTER).toBe("otlp");
+  });
+
+  it("still asks before widening a device that connected without tool output", async () => {
+    await connect("--no-tool-output");
+
+    grants = { rawCapture: false, traceCapture: true };
+    const { stdout } = await sabia("sync", "--quiet");
+
+    expect((await readSettings()).env?.OTEL_TRACES_EXPORTER).toBe("none");
+    expect(stdout).toContain("asked to widen");
+  });
+
+  it("refuses to install a key Sabia reports as revoked", async () => {
+    grants = "revoked";
+
+    const failure = await connect().catch((error: { code: number; stdout: string; stderr: string }) => error);
+
+    expect(failure).toMatchObject({ code: 1 });
+    expect((failure as { stderr: string }).stderr).toContain("revoked");
+    expect((failure as { stdout: string }).stdout).not.toContain("Connected");
+    await expect(readFile(settingsPath, "utf8")).rejects.toThrow("ENOENT");
   });
 
   it("shares token counts only with --no-tool-output", async () => {

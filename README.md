@@ -67,8 +67,10 @@ Claude reports the same way you would review a commit message.
 One more grant widens native usage. `connect` asks for it unless you pass
 `--no-tool-output`. It needs an owner or administrator of your Sabia
 organization to approve it in the browser, and is recorded on the connection's
-key rather than on this machine. When it is not granted, `connect` leaves the
-log and trace export off.
+key rather than on this machine. Content is exported only once Sabia confirms
+the grant: when it is withheld or cannot be read, `connect` leaves the log and
+trace export off, and the session-start sync turns it on once Sabia confirms
+it.
 
 | Grant | Adds | Still never sent |
 | --- | --- | --- |

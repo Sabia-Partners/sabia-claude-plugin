@@ -42,8 +42,9 @@ organization can read what is kept. Claude Code redacts prompt text in those
 events, and assistant responses are not exported. Confirm before running.
 
 The grant is recorded on the ingestion key at approval. Only an owner or
-administrator can grant it; when it is withheld, connect leaves the log and
-trace export off and says so. Reconnecting with `--no-tool-output` turns the
+administrator can grant it; when it is withheld or cannot be read, connect
+leaves the log and trace export off and says so, and the session-start sync
+turns it on once Sabia confirms it. Reconnecting with `--no-tool-output` turns the
 export off.
 
 Two expectations to set: only work done in **new** sessions after connecting
