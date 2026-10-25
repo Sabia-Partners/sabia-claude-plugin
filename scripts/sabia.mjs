@@ -91,6 +91,28 @@ const INGESTION_KEY_PATTERN = /^sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43}$/;
 const MANAGED_HEADER_PATTERN = /Bearer (sbia_ing_[0-9a-f]{12}_[A-Za-z0-9_-]{43})/;
 const PROMPT_SETTING = "OTEL_LOG_USER_PROMPTS";
 
+/**
+ * Claude Code cloud sessions (claude.ai/code, `claude --cloud`, routines) run
+ * in a VM that is discarded with the session, and Claude Code there exports
+ * only what the cloud environment's own variables say. A key written to this
+ * VM's settings.json would never be read, so connect refuses and says where
+ * cloud usage is set up instead.
+ */
+const CLOUD_SESSION_SETUP =
+  "To share usage from cloud sessions, open Sabia, go to Settings > Connected Tools > Connect a tool > Claude Code, choose Get cloud session values, and add them to a personal cloud environment. Finished work from cloud sessions is reported through the Sabia connector in Claude (claude.ai/customize/connectors).";
+
+function inCloudSession() {
+  return process.env.CLAUDE_CODE_REMOTE === "true";
+}
+
+function refuseCloudSession() {
+  if (inCloudSession()) {
+    throw new Error(
+      `This is a Claude Code cloud session. Its settings are discarded when it ends and no later session reads them, so connecting here would share nothing. ${CLOUD_SESSION_SETUP}`,
+    );
+  }
+}
+
 const { command, options } = parseArguments(process.argv.slice(2));
 const claudeHome = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
 const settingsPath = options.settings || join(claudeHome, "settings.json");
@@ -126,6 +148,7 @@ try {
 }
 
 async function connect() {
+  refuseCloudSession();
   const baseUrl = normalizedBaseUrl(
     options["base-url"] || process.env.SABIA_APP_URL || DEFAULT_BASE_URL,
   );
@@ -233,6 +256,7 @@ function refuseRawCapture() {
 }
 
 async function configureHeadless() {
+  refuseCloudSession();
   const endpoint = options.endpoint;
   const ingestionKey = options["ingestion-key"];
   if (!endpoint || !ingestionKey) {
@@ -326,7 +350,7 @@ async function status() {
   const env = plainObject(settings.env) ? settings.env : {};
   const state = await readJson(statePath);
   if (!isManaged(env)) {
-    process.stdout.write("Sabia telemetry: disconnected\n");
+    process.stdout.write(inCloudSession() ? cloudStatus() : "Sabia telemetry: disconnected\n");
     return;
   }
 
@@ -351,6 +375,19 @@ async function status() {
   if (state?.pendingCapture?.traceCapture) {
     process.stdout.write("Waiting for your approval: tool output. Run approve to accept.\n");
   }
+}
+
+/**
+ * A cloud session's exporter comes from the environment's variables, and
+ * Claude Code keeps `OTEL_*` variables out of the commands it runs, so the key
+ * and endpoint cannot be checked from here. CLAUDE_CODE_ENABLE_TELEMETRY is
+ * visible, and Sabia's cloud values always set it.
+ */
+function cloudStatus() {
+  if (process.env.CLAUDE_CODE_ENABLE_TELEMETRY === "1") {
+    return "Sabia telemetry: set by this cloud environment. Claude Code keeps its exporter variables out of commands, so the plugin cannot check them; telemetry is turned on here.\n";
+  }
+  return `Sabia telemetry: not shared from this cloud session. ${CLOUD_SESSION_SETUP}\n`;
 }
 
 /**
