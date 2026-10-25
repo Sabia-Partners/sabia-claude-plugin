@@ -248,7 +248,7 @@ describe("identity paths from the fetched contract", () => {
       "mcp__atlassian__createJiraIssue", "mcp__claude_ai_Atlassian__createjiraissue", "mcp__x__CREATEJIRAISSUE",
       "mcp__apollo__APOLLO_CREATE_TASK", "mcp__hubspot__createcontactrecord", "mcp__github__CREATE_PULL_REQUEST", "mcp__hubspot__enrollcontacts",
     ]) expect(isMutation(name, contract), name).toBe(true);
-    for (const name of ["mcp__atlassian__getJiraIssue", "mcp__x__notcreatejiraissue", "mcp__notion__API-get-page", "mcp__sabia-artifacts__createJiraIssue"]) {
+    for (const name of ["mcp__atlassian__getJiraIssue", "mcp__x__notcreatejiraissue", "mcp__notion__API-get-page", "mcp__sabia-artifacts__createJiraIssue", "mcp__claude_ai_Sabia__createJiraIssue", "mcp__Sabia__createJiraIssue"]) {
       expect(isMutation(name, contract), name).toBe(false);
     }
     expect(isMutation("mcp__github__CREATE_PULL_REQUEST"), "vendored").toBe(true);

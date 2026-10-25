@@ -32,6 +32,7 @@ that produced it.
 
 Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →
 `plugin:sabia:sabia-artifacts` to connect Output Reporting. [SETUP.md](SETUP.md) walks through both, step by step.
+Cloud sessions on claude.ai/code need their own setup: see [Cloud sessions](#cloud-sessions).
 Needs Claude Code 2.1.81 or later. For Claude on the web, Desktop and mobile, see
 [Connect Claude to Sabia](https://app2.sabiapartners.ca/help/claude).
 
@@ -168,11 +169,24 @@ Records Sabia already accepted stay in your workspace.
 ## Cloud sessions
 
 Cloud sessions run on Anthropic's machines: claude.ai/code, `claude --cloud`,
-the Desktop app's Cloud option and routines. They never read the
-`settings.json` this plugin writes, so connecting on your computer does not
-cover them. They send token counts to Sabia only when the exporter variables
-are set on the cloud environment itself. This works on Pro, Max, Team and
-Enterprise.
+the Desktop app's Cloud option and routines. They load neither the plugins
+installed on your computer nor the `settings.json` this plugin writes, so
+installing and connecting on your computer does not cover them. Set them up
+once, separately for each connection.
+
+**Output Reporting.** Add the Sabia connector in Claude: at
+[claude.ai/customize/connectors](https://claude.ai/customize/connectors),
+choose **Add custom connector** and follow
+[Connect Claude to Sabia](https://app2.sabiapartners.ca/help/claude). Cloud
+sessions get it already signed in, and it reports their work as Claude Code;
+`/mcp` sign-in cannot finish in a cloud session. The same connector covers
+Claude chat, Cowork, Desktop and mobile. If you connected it before it covered
+Claude Code, disconnect it there and connect again.
+
+**Native usage.** Cloud sessions send token counts to Sabia only when the
+exporter variables are set on the cloud environment itself. This works on Pro,
+Max, Team and Enterprise. `connect` refuses to run in a cloud session, because
+nothing it writes there would be read again.
 
 1. In Sabia, go to **Settings → Connected Tools**, select **Connect a tool**,
    then **Set up** on Claude Code, and select **Get cloud session values**. Sabia issues a key for
@@ -191,9 +205,10 @@ Enterprise.
 
 This sends the same metrics-only token counts as the default native usage
 connection. Prompts, responses, tool arguments and file contents are not sent.
-These steps do not set up Output Reporting for cloud sessions, and the
-tool-output grant cannot be turned on for a cloud key: cloud sessions send no
-traces, so it would stop Sabia counting their usage.
+The tool-output grant cannot be turned on for a cloud key: cloud sessions send
+no traces, so it would stop Sabia counting their usage. Reports from cloud
+sessions are not linked to their token usage, because the binding hook needs
+the key and cloud sessions keep it from hooks.
 
 Keep the key in a **personal** environment. Anyone who can use an environment
 can read its variables, and Sabia credits every session in it to the person
