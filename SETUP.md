@@ -56,7 +56,8 @@ this.
 | Usage does not appear in Sabia | Start a new session after connecting. Check `status`. |
 | A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Widening also waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
 | `status` says Sabia revoked this device | Run `disconnect` to clean up, then connect again. |
-| Reporting tools are missing or unauthorized | Repeat step 3. |
+| Reporting tools are missing or unauthorized | Repeat step 3. Updating to 0.8.0 needs this once. |
+| `/mcp` lists two Sabia servers | The Sabia connector added in Claude has the old address. Remove it in Claude's connector settings and add it again with `https://app.sabia.work/api/mcp/artifacts`. |
 
 For a Sabia deployment other than the default, pass `--base-url <url>` to
 `connect` or set `SABIA_APP_URL`. On a machine without a browser, use

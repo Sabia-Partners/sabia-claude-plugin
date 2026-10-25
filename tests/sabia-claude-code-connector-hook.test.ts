@@ -137,6 +137,15 @@ describe("Claude Code connector hook", () => {
       expect.objectContaining({ redirect: "manual", headers: expect.objectContaining({ authorization: `Bearer ${token}` }), body: JSON.stringify(connectorEnvelope(driveCreate, 1_000)) }));
     expect(stdout).not.toHaveBeenCalled(); stdout.mockRestore();
   });
+  // A device connected before 0.8.0 stays on app2, which Sabia serves as a legacy origin.
+  it.each(["https://app2.sabiapartners.ca", "https://app.sabia.work"])("fetches the contract and posts on %s when the device was connected there", async (origin) => {
+    const connected = `${origin}/api/v1/telemetry/otlp`;
+    await settings({ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: connected, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}`, OTEL_TRACES_EXPORTER: "otlp" });
+    await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: "org", endpoint: connected }));
+    const fetch = vi.fn(async (url: string) => (url.endsWith("/contract") ? notFound() : ok()));
+    expect(await run(driveCreate, { fetch, now: 1_000 })).toEqual({ sent: true, attempts: 1 });
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual([`${origin}/api/v1/telemetry/claude-code/hooks/contract`, `${origin}/api/v1/telemetry/claude-code/hooks`]);
+  });
   it("retries transient failures with backoff and gives up silently without a spool", async () => {
     const post = vi.fn().mockResolvedValueOnce(new Response("no", { status: 503 })).mockRejectedValueOnce(new Error("offline")).mockResolvedValue(ok());
     const sleep = vi.fn(async (_ms: number) => {});

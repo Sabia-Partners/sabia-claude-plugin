@@ -12,7 +12,11 @@ import {
   readResponseJson,
 } from "./sabia-http.mjs";
 
-const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";
+// Only connect reads this. sync, approve, status, disconnect and both hooks use
+// the endpoint a device was connected with, so a device connected to
+// https://app2.sabiapartners.ca before 0.8.0 stays there until it connects
+// again. Sabia keeps serving that origin's API for it (LEGACY_APP_ORIGINS).
+const DEFAULT_BASE_URL = "https://app.sabia.work";
 
 /**
  * Every variable this plugin owns.

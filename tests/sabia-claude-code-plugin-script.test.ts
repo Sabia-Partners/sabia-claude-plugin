@@ -4,6 +4,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -51,15 +52,19 @@ async function readSettings(): Promise<{
 
 describe("Sabia Claude Code plugin production connection", () => {
   it("uses the public canonical domain consistently", async () => {
-    const [script, manifestText] = await Promise.all([
+    const [script, manifestText, mcpText] = await Promise.all([
       readFile(scriptPath, "utf8"),
       readFile(join(pluginRoot, ".claude-plugin/plugin.json"), "utf8"),
+      readFile(join(pluginRoot, ".mcp.json"), "utf8"),
     ]);
-    const manifest = JSON.parse(manifestText) as { homepage: string };
+    const manifest = JSON.parse(manifestText) as { homepage: string; privacyPolicyUrl: string };
+    const mcp = JSON.parse(mcpText) as { mcpServers: Record<string, { url: string }> };
 
-    expect(script).toContain(
-      'const DEFAULT_BASE_URL = "https://app2.sabiapartners.ca";',
-    );
+    expect(script).toContain('const DEFAULT_BASE_URL = "https://app.sabia.work";');
+    // A new device connects native usage and Output Reporting to one origin,
+    // the one the privacy notice is served from.
+    expect(new URL(mcp.mcpServers["sabia-artifacts"]!.url).origin).toBe("https://app.sabia.work");
+    expect(new URL(manifest.privacyPolicyUrl).origin).toBe("https://app.sabia.work");
     expect(manifest.homepage).toBe("https://sabiapartners.ca");
   });
 
@@ -706,6 +711,92 @@ describe("Sabia Claude Code plugin settings management", () => {
 
       expect(stdout).toBe("");
       expect(grantReads).toBe(0);
+    });
+  });
+
+  describe("a device connected to app2 before 0.8.0", () => {
+    // Only connect reads the default. Everything else follows the stored
+    // endpoint, which Sabia keeps serving while app2 is a legacy origin.
+    const legacy = "https://app2.sabiapartners.ca";
+    let server: Server;
+    let local: string;
+    let grants: { rawCapture: boolean; traceCapture: boolean };
+
+    beforeEach(async () => {
+      grants = { rawCapture: false, traceCapture: false };
+      server = createServer((request, response) => {
+        if (
+          request.url !== "/api/v1/telemetry/connection" ||
+          request.headers.authorization !== `Bearer ${ingestionKey}`
+        ) {
+          response.writeHead(404);
+          response.end();
+          return;
+        }
+        if (request.method === "DELETE") {
+          response.writeHead(204);
+          response.end();
+          return;
+        }
+        // The dashboard names the origin the request reached.
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            source: "claude_code",
+            ...grants,
+            otlpMetricsEndpoint: `${legacy}/api/v1/telemetry/otlp`,
+            otlpLogsEndpoint: `${legacy}/api/v1/telemetry/otlp`,
+            tracesEndpoint: `${legacy}/api/v1/telemetry/traces`,
+          }),
+        );
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      local = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    });
+
+    afterEach(async () => {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    });
+
+    function routed(...args: string[]) {
+      return run(
+        process.execPath,
+        ["--import", pathToFileURL(join(pluginRoot, "tests/fixtures/route-fetch.mjs")).href,
+          scriptPath, ...args, "--settings", settingsPath, "--state", statePath],
+        {
+          env: {
+            ...process.env,
+            SABIA_TEST_FETCH_ROUTE: JSON.stringify({ from: legacy, to: local, log: join(workspace, "fetch.log") }),
+          },
+        },
+      );
+    }
+
+    it("syncs, approves and disconnects on app2, never on the new default", async () => {
+      await sabia("configure", "--endpoint", `${legacy}/api/v1/telemetry/otlp`, "--ingestion-key", ingestionKey);
+      grants = { rawCapture: false, traceCapture: true };
+
+      expect((await routed("sync", "--quiet")).stdout).toContain("asked to widen");
+      await routed("approve");
+
+      const env = (await readSettings()).env ?? {};
+      expect(env.OTEL_EXPORTER_OTLP_METRICS_ENDPOINT).toBe(`${legacy}/api/v1/telemetry/otlp`);
+      expect(env.OTEL_EXPORTER_OTLP_LOGS_ENDPOINT).toBe(`${legacy}/api/v1/telemetry/otlp`);
+      expect(env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT).toBe(`${legacy}/api/v1/telemetry/traces`);
+      expect(JSON.parse(await readFile(statePath, "utf8")).endpoint).toBe(`${legacy}/api/v1/telemetry/otlp`);
+      expect((await routed("status")).stdout).toContain(`Endpoint: ${legacy}/api/v1/telemetry/otlp`);
+
+      await routed("disconnect");
+
+      expect((await readSettings()).env).toBeUndefined();
+      // Any other origin, the default included, would be logged and fail.
+      expect((await readFile(join(workspace, "fetch.log"), "utf8")).trim().split("\n")).toEqual([
+        `GET ${legacy}/api/v1/telemetry/connection`,
+        `GET ${legacy}/api/v1/telemetry/connection`,
+        `DELETE ${legacy}/api/v1/telemetry/connection`,
+      ]);
     });
   });
 

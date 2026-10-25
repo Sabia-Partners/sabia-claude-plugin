@@ -33,7 +33,7 @@ that produced it.
 Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →
 `plugin:sabia:sabia-artifacts` to connect Output Reporting. [SETUP.md](SETUP.md) walks through both, step by step.
 Needs Claude Code 2.1.81 or later. For Claude on the web, Desktop and mobile, see
-[Connect Claude to Sabia](https://app2.sabiapartners.ca/help/claude).
+[Connect Claude to Sabia](https://app.sabia.work/help/claude).
 
 You need a Sabia workspace. Talk to [Sabia Partners](https://sabiapartners.ca/contact)
 if your team does not have one yet.
@@ -44,13 +44,25 @@ uninstall it and install `sabia@sabia`. Your native usage connection is kept,
 because it lives in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`
 rather than in the plugin. Output Reporting needs one new sign-in through `/mcp`.
 
+From 0.8.0 the plugin uses Sabia's current address, `app.sabia.work`, instead
+of `app2.sabiapartners.ca`. After updating, run `/mcp` →
+`plugin:sabia:sabia-artifacts` and sign in once more: a sign-in made on the old
+address is not accepted on the new one. The old connection stays in Sabia until
+you revoke it under Settings → Members → Details → Output Reporting. Native
+usage connected before 0.8.0 keeps sending to `app2.sabiapartners.ca`, which
+Sabia still serves; ask Claude to connect Sabia again to move it. If you added
+the Sabia connector in Claude with the old address, remove it there and add it
+again with `https://app.sabia.work/api/mcp/artifacts`, so Claude Code lists one
+Sabia server instead of two.
+
 ## What leaves your machine
 
 Nothing is sent until you connect. After that, only what the table shows for
-your connection is sent, and only to Sabia (`app2.sabiapartners.ca`). This
+your connection is sent, and only to Sabia (`app.sabia.work`, or
+`app2.sabiapartners.ca` for native usage connected before 0.8.0). This
 plugin never turns on prompt text or assistant responses, and never reads your
 Claude chat history, memory or transcripts. The
-[privacy notice](https://app2.sabiapartners.ca/privacy/claude-code) covers what
+[privacy notice](https://app.sabia.work/privacy/claude-code) covers what
 Sabia keeps and for how long.
 
 | Connection | Sent to Sabia | Never sent |
@@ -120,9 +132,11 @@ flowchart LR
 
 ### Everything this plugin runs, sends and fetches
 
-Every request goes to one Sabia host: `app2.sabiapartners.ca` by default, or
-the `--base-url` you connected with. Nothing else is contacted, and no code or
-instructions are downloaded.
+Every request goes to Sabia. Output Reporting uses `app.sabia.work`. Native
+usage, the report binding and the connector hook use the host native usage was
+connected to: `app.sabia.work` by default, `app2.sabiapartners.ca` for a device
+connected before 0.8.0, or the `--base-url` you connected with. Nothing else is
+contacted, and no code or instructions are downloaded.
 
 | When | Runs | Network | Writes |
 | --- | --- | --- | --- |
@@ -183,9 +197,10 @@ Enterprise.
    one.
 3. Paste the variables into **Environment variables**.
 4. Set **Network access** to **Custom** and add the Sabia host shown with the
-   variables, for example `app2.sabiapartners.ca`. Check **Also include
+   variables, for example `app.sabia.work`. Check **Also include
    default list of common package managers** if your sessions install
-   packages.
+   packages. An environment set up with `app2.sabiapartners.ca` keeps
+   working; get new values to move it.
 5. Start a new cloud session in that environment. Its usage appears under
    Claude Code in Sabia after a few minutes.
 
@@ -255,6 +270,27 @@ shape is pinned on both sides (the dashboard's
 `parseConnectorContract`); this hook rejects a contract with any key, kind or cap it
 does not know and falls back to its last good copy, so a new field needs a plugin
 release that accepts it before the server may serve it.
+
+### Retiring `app2.sabiapartners.ca`
+
+Sabia moved from `https://app2.sabiapartners.ca` to `https://app.sabia.work`, and
+this plugin followed in 0.8.0. That release changes only new connects, the bundled
+MCP server and links. Devices connected before it keep app2 in their settings, as do
+cloud environments and Output Reporting sign-ins made there. The dashboard serves
+app2's API, OAuth discovery and consent page for them while app2 is listed in its
+`LEGACY_APP_ORIGINS`. Removing it is the contract step of expand, deploy, contract,
+so it waits for this release, not the other way round:
+
+1. **Expand** (dashboard): `APP_URL` is app.sabia.work, and app2 is served as its
+   own authorization server.
+2. **Deploy** (0.8.0): nothing new names app2. Native usage already connected
+   keeps working; Output Reporting asks for one new sign-in.
+3. **Contract**: drop app2 from `LEGACY_APP_ORIGINS` only once nothing calls it.
+   The dashboard's `docs/engineering/hosted-claude-artifact-reporting.md` lists
+   what to check first.
+
+Never point `.mcp.json` or `DEFAULT_BASE_URL` back at app2. Moving a plugin
+server's URL makes every user sign in again.
 
 To release, raise the version in `.claude-plugin/plugin.json` and
 `package.json`, then tag `vX.Y.Z`. The release workflow runs the checks and
