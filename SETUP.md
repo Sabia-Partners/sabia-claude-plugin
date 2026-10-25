@@ -65,7 +65,7 @@ to a personal cloud environment. The README's
 | --- | --- |
 | Sign-in says the server does not support dynamic client registration | Update Claude Code to 2.1.81 or later. |
 | Usage does not appear in Sabia | Start a new session after connecting. Check `status`. |
-| A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Widening also waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
+| A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Tool output you asked for at `connect` but were not granted then applies once it is granted. Any other widening waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
 | `status` says Sabia revoked this device | Run `disconnect` to clean up, then connect again. |
 | Reporting tools are missing or unauthorized | Repeat step 3. In a cloud session, connect the Sabia connector in Claude instead (step 4). |
 | `connect` says this is a Claude Code cloud session | Set up cloud usage in Sabia instead (step 4). |
