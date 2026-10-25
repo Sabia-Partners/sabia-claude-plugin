@@ -11,21 +11,34 @@ it produces two Outputs linked to one Artifact. A generated response or trace
 alone does not qualify.
 
 Use the connected `get_reporting_contract` and `report_artifact_v3` tools after
-the producing operation has succeeded. The plugin bundles the server as
-`sabia-artifacts`, so Claude Code lists its tools under the scoped names
-`mcp__plugin_sabia_sabia-artifacts__report_artifact_v3`,
-`…__get_reporting_contract`, `…__get_artifact_report`,
-`…__get_reporting_context` and `…__begin_reporting_session`. Do not use
-`report_artifact`: Sabia accepts new reports only through
+the producing operation has succeeded. They reach Claude Code from one of two
+places, and either works:
+
+- the server this plugin bundles as `sabia-artifacts`, whose tools are
+  `mcp__plugin_sabia_sabia-artifacts__report_artifact_v3`,
+  `…__get_reporting_contract`, `…__get_artifact_report`,
+  `…__get_reporting_context` and `…__begin_reporting_session`;
+- the Sabia connector added in Claude, with the same tool names under the
+  connector's name, such as `mcp__claude_ai_Sabia__report_artifact_v3` on a
+  computer or `mcp__Sabia__report_artifact_v3` in a cloud session.
+
+Use whichever is connected, and the same one for every call about one report.
+Do not use `report_artifact`: Sabia accepts new reports only through
 `report_artifact_v3`. This skill works through those hosted tools only:
 no shell, no Node process, no credential file, and nothing in the native OTel
 configuration that `connect-sabia` manages. Native usage collection continues
 independently through that skill and is never a substitute for a report.
 
 If the tools are missing or answer with an authorization error, the user has
-not connected Output Reporting yet: tell them to run `/mcp`, choose
-`plugin:sabia:sabia-artifacts`, sign in to Sabia and approve
-metadata sharing for their organization. Do not attempt the report another way.
+not connected Output Reporting yet. On their computer, tell them to run `/mcp`,
+choose `plugin:sabia:sabia-artifacts`, sign in to Sabia and approve metadata
+sharing for their organization. In a cloud session (claude.ai/code,
+`claude --cloud` or a routine, where `CLAUDE_CODE_REMOTE` is `true`) that
+sign-in cannot finish: tell them to add and connect Sabia at
+claude.ai/customize/connectors and start a new session. If the connector
+answers `DISALLOWED_SOURCE` for `claude_code`, it was connected before it
+covered Claude Code: tell them to disconnect Sabia there and connect it again.
+Do not attempt the report another way or under another `source_application`.
 
 ## Qualifying operations
 
@@ -150,7 +163,8 @@ report. Never repeat the create, send or publish operation to recover a
 receipt. A conflict means the `event_id` was reused with different data:
 preserve it for explicit resolution; do not mint a new id. Correct a rejected
 schema only when no report was accepted. On missing or revoked consent, stop
-and direct the user to reconnect through `/mcp`.
+and direct the user to reconnect: through `/mcp` for the plugin's server, or in
+Claude's connector settings for the Sabia connector.
 
 Allow at most one immediate retry within a six-second budget. Honour
 `Retry-After`; defer long waits. Report an unresolved delivery in one sentence,

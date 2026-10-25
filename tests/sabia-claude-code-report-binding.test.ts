@@ -47,6 +47,9 @@ describe("Claude Code report binding", () => {
     const binding = nativeBinding({ ...event, tool_name: `${scopedTool}_v3`, tool_response: [{ type: "text", text: JSON.stringify(v3) }] }, device);
     expect(binding).toMatchObject({ receipt_proof: proof, invocation_id: "toolu_01ReportCall", conversation_key: expectedKey });
     expect(nativeBinding({ ...event, tool_name: "mcp__sabia-artifacts__report_artifact_v3" }, device)).toMatchObject({ receipt_proof: proof });
+    // The Sabia connector added in claude.ai returns the same receipt.
+    expect(nativeBinding({ ...event, tool_name: "mcp__claude_ai_Sabia__report_artifact_v3" }, device)).toMatchObject({ receipt_proof: proof });
+    expect(nativeBinding({ ...event, tool_name: "mcp__claude_ai_Slack__report_artifact_v3" }, device)).toBeNull();
     expect(nativeBinding({ ...event, tool_name: `${scopedTool}_v4` }, device)).toBeNull();
   });
   it("ignores other tools, lookups, failures, duplicates and missing coordinates", () => {

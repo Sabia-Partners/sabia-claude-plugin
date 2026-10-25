@@ -18,7 +18,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^mcp__(plugin_sabia_)?sabia-artifacts__report_artifact(_v3)?$",
+        "matcher": "^mcp__((plugin_sabia_)?sabia-artifacts|claude_ai_[Ss]abia)__report_artifact(_v3)?$",
         "hooks": [
           {
             "type": "command",

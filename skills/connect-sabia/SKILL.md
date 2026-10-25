@@ -7,6 +7,18 @@ description: Connect, inspect, rotate, approve a capture request for, or disconn
 
 Use the bundled `scripts/sabia.mjs`; do not invent a token counter or read transcript files.
 
+## Cloud sessions
+
+In a Claude Code cloud session (claude.ai/code, `claude --cloud` or a routine,
+where `CLAUDE_CODE_REMOTE` is `true`), do not run `connect` or `configure`: the
+session's settings are discarded when it ends and no later session reads them,
+and both commands refuse there. Tell the user that cloud usage is set up in
+Sabia under Settings → Connected Tools → Connect a tool → Claude Code → **Get
+cloud session values**, pasted into a personal cloud environment with Sabia's
+domain allowed, and that finished work from cloud sessions is reported through
+the Sabia connector at claude.ai/customize/connectors. `status` there says
+whether the environment turns telemetry on; it cannot read the key.
+
 ## Connect or rotate
 
 1. Tell the user what this shares: token counts from Claude Code's native OpenTelemetry metrics export, and the tool output described in the section below. Prompt text and assistant responses are never sent. It does not report invoice-confirmed spend. Confirm before running.

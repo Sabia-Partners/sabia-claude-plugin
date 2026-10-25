@@ -32,15 +32,20 @@ afterEach(async () => {
   await rm(workspace, { recursive: true, force: true });
 });
 
+// The suite can itself run inside a Claude Code cloud session, which sets
+// these; each test says which kind of session it runs the script in.
+const { CLAUDE_CODE_REMOTE: _remote, CLAUDE_CODE_ENABLE_TELEMETRY: _telemetry, ...localEnv } = process.env;
+
 function sabia(...args: string[]) {
-  return run(process.execPath, [
-    scriptPath,
-    ...args,
-    "--settings",
-    settingsPath,
-    "--state",
-    statePath,
-  ]);
+  return sabiaIn(localEnv, ...args);
+}
+
+function sabiaIn(env: NodeJS.ProcessEnv, ...args: string[]) {
+  return run(
+    process.execPath,
+    [scriptPath, ...args, "--settings", settingsPath, "--state", statePath],
+    { env },
+  );
 }
 
 async function readSettings(): Promise<{
@@ -767,7 +772,7 @@ describe("Sabia Claude Code plugin settings management", () => {
           scriptPath, ...args, "--settings", settingsPath, "--state", statePath],
         {
           env: {
-            ...process.env,
+            ...localEnv,
             SABIA_TEST_FETCH_ROUTE: JSON.stringify({ from: legacy, to: local, log: join(workspace, "fetch.log") }),
           },
         },
@@ -827,6 +832,41 @@ describe("Sabia Claude Code plugin settings management", () => {
     ).rejects.toThrow(/is not valid JSON/);
 
     expect(await readFile(settingsPath, "utf8")).toBe(damaged);
+  });
+
+  describe("in a Claude Code cloud session", () => {
+    const cloud = { ...localEnv, CLAUDE_CODE_REMOTE: "true" };
+
+    // The VM's settings are discarded with the session and never read again.
+    it.each([
+      [["connect", "--base-url", "http://127.0.0.1:9", "--no-open"]],
+      [["configure", "--endpoint", endpoint, "--ingestion-key", ingestionKey]],
+    ])("refuses %j, writes nothing and says where cloud usage is set up", async (args) => {
+      const failure = await sabiaIn(cloud, ...args).then(
+        () => null,
+        (error: { code: number; stderr: string }) => error,
+      );
+
+      expect(failure?.code).toBe(1);
+      expect(failure?.stderr).toContain("This is a Claude Code cloud session.");
+      expect(failure?.stderr).toContain("Get cloud session values");
+      expect(failure?.stderr).toContain("claude.ai/customize/connectors");
+      await expect(readFile(settingsPath, "utf8")).rejects.toThrow("ENOENT");
+      await expect(readFile(statePath, "utf8")).rejects.toThrow("ENOENT");
+    });
+
+    it("says whether the cloud environment turns telemetry on", async () => {
+      expect((await sabiaIn(cloud, "status")).stdout).toContain(
+        "Sabia telemetry: not shared from this cloud session.",
+      );
+      expect(
+        (await sabiaIn({ ...cloud, CLAUDE_CODE_ENABLE_TELEMETRY: "1" }, "status")).stdout,
+      ).toContain("Sabia telemetry: set by this cloud environment.");
+    });
+
+    it("stays quiet at session start", async () => {
+      expect((await sabiaIn(cloud, "sync", "--quiet")).stdout).toBe("");
+    });
   });
 
   it("rejects a credential that is not a Sabia ingestion key", async () => {

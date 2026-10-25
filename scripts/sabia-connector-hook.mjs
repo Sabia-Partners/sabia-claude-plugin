@@ -28,7 +28,8 @@ const REQUEST_TIMEOUT_MS = 1500;
 const TOTAL_BUDGET_MS = 6000;
 
 // Sabia's own reporting server is never a producing tool.
-const SABIA_SERVERS = /^(?:plugin_[A-Za-z0-9._-]+_)?(?:sabia[_-]artifacts|sabia[_-]artifact[_-]reporting)$/;
+// The bundled server, a hand-configured copy, or the Sabia connector from claude.ai.
+const SABIA_SERVERS = /^(?:(?:plugin_[A-Za-z0-9._-]+_)?(?:sabia[_-]artifacts|sabia[_-]artifact[_-]reporting)|(?:claude_ai_)?[Ss]abia)$/;
 
 /** Drive and GitHub operations with extraction rules: the vendored v1
  * contract, applied until a contract has been fetched from Sabia. Pinned

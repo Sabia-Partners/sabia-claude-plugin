@@ -48,6 +48,17 @@ When both connections are active, the plugin also links each accepted report to
 the session and tokens that produced it. You do not need to do anything for
 this.
 
+## 4. Cloud sessions
+
+Cloud sessions (claude.ai/code, `claude --cloud`, routines) do not load this
+plugin or the settings it writes. For Output Reporting there, add the Sabia
+connector at [claude.ai/customize/connectors](https://claude.ai/customize/connectors)
+([steps](https://app.sabia.work/help/claude)); cloud sessions get it
+already signed in. For native usage, get the cloud session values in Sabia
+under Settings → Connected Tools → Connect a tool → Claude Code, and add them
+to a personal cloud environment. The README's
+[Cloud sessions](README.md#cloud-sessions) section has the full steps.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -56,8 +67,10 @@ this.
 | Usage does not appear in Sabia | Start a new session after connecting. Check `status`. |
 | A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Widening also waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
 | `status` says Sabia revoked this device | Run `disconnect` to clean up, then connect again. |
-| Reporting tools are missing or unauthorized | Repeat step 3. Updating to 0.8.0 needs this once. |
+| Reporting tools are missing or unauthorized | Repeat step 3. Updating to 0.8.0 needs this once. In a cloud session, connect the Sabia connector in Claude instead (step 4). |
 | `/mcp` lists two Sabia servers | The Sabia connector added in Claude has the old address. Remove it in Claude's connector settings and add it again with `https://app.sabia.work/api/mcp/artifacts`. |
+| `connect` says this is a Claude Code cloud session | Set up cloud usage in Sabia instead (step 4). |
+| The Sabia connector answers `DISALLOWED_SOURCE` from Claude Code | It was connected before it covered Claude Code. Disconnect it in Claude's connector settings and connect again. |
 
 For a Sabia deployment other than the default, pass `--base-url <url>` to
 `connect` or set `SABIA_APP_URL`. On a machine without a browser, use

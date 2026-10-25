@@ -56,6 +56,10 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(matcher.test("mcp__sabia-artifacts__report_artifact")).toBe(true);
     expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact_v3")).toBe(true);
     expect(matcher.test("mcp__sabia-artifacts__report_artifact_v3")).toBe(true);
+    // The Sabia connector added in claude.ai, as Claude Code names it on a computer.
+    expect(matcher.test("mcp__claude_ai_Sabia__report_artifact_v3")).toBe(true);
+    expect(matcher.test("mcp__claude_ai_Sabia__get_artifact_report")).toBe(false);
+    expect(matcher.test("mcp__claude_ai_Slack__report_artifact_v3")).toBe(false);
     expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact_v4")).toBe(false);
     expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__get_artifact_report")).toBe(false);
     expect(matcher.test("Bash")).toBe(false);
