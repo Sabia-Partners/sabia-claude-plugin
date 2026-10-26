@@ -74,6 +74,15 @@ describe("Claude Code report binding", () => {
     expect(stdout).not.toHaveBeenCalled(); stdout.mockRestore();
     expect(await readdir(join(directory, "pending"))).toEqual([]);
   });
+  // A device connected before 0.8.0 stays on app2, which Sabia serves as a legacy origin.
+  it.each(["https://app2.sabiapartners.ca", "https://app.sabia.work"])("binds on %s when the device was connected there", async (origin) => {
+    const connected = `${origin}/api/v1/telemetry/otlp`;
+    await writeFile(join(directory, "settings.json"), JSON.stringify({ env: { OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: connected, OTEL_EXPORTER_OTLP_HEADERS: `Authorization=Bearer ${token}` } }));
+    await writeFile(join(directory, "sabia-otel-state.json"), JSON.stringify({ deviceId: device, organizationId: "org", endpoint: connected }));
+    const fetch = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+    await run(event, { fetch, now: 1_000 });
+    expect(fetch.mock.calls.map((call) => call[0])).toEqual([`${origin}/api/v1/artifact-reporting/claude-code-invocation`]);
+  });
   it("keeps the original coordinates after a lost response and retries with backoff from another session", async () => {
     const fetch = vi.fn().mockRejectedValueOnce(new Error("lost response")).mockResolvedValue(new Response("{}", { status: 200 }));
     await run(event, { fetch, now: 1_000 });

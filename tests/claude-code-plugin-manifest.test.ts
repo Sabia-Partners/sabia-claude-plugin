@@ -35,7 +35,7 @@ describe("Sabia for Claude Code plugin manifest", () => {
     const server = mcp.mcpServers["sabia-artifacts"];
     expect(Object.keys(mcp.mcpServers)).toEqual(["sabia-artifacts"]);
     expect(server.type).toBe("http");
-    expect(server.url).toBe("https://app2.sabiapartners.ca/api/mcp/artifacts");
+    expect(server.url).toBe("https://app.sabia.work/api/mcp/artifacts");
     expect(server.command).toBeUndefined();
     expect(server.headers).toBeUndefined();
     // Sabia advertises Client ID Metadata Documents, so Claude Code signs in

@@ -27,9 +27,12 @@ whether the environment turns telemetry on; it cannot read the key.
 3. Wait while the user signs in and confirms **Share usage with <organization>**. The script receives the credential through the one-time device handoff and updates the `env` block in `~/.claude/settings.json`.
 4. Report the selected organization and tell the user to **start a new Claude Code session** — the current one already read its environment and will keep exporting nothing. Re-running connect rotates the key with overlap.
 
-The bundled production default is `https://app2.sabiapartners.ca`. Do not replace
-it with a generated or preview Vercel URL. For local Sabia development, add
-`--base-url http://127.0.0.1:3000`. For headless environments only, use
+The bundled production default is `https://app.sabia.work`. Do not replace
+it with a generated or preview Vercel URL. A device connected before 0.8.0
+keeps `https://app2.sabiapartners.ca`, which Sabia still serves; `status`
+shows the endpoint, and running connect again moves it to the default. For
+local Sabia development, add `--base-url http://127.0.0.1:3000`. For headless
+environments only, use
 `configure --endpoint <url> --ingestion-key <key>`; browser connect is the
 normal path.
 

@@ -53,7 +53,7 @@ this.
 Cloud sessions (claude.ai/code, `claude --cloud`, routines) do not load this
 plugin or the settings it writes. For Output Reporting there, add the Sabia
 connector at [claude.ai/customize/connectors](https://claude.ai/customize/connectors)
-([steps](https://app2.sabiapartners.ca/help/claude)); cloud sessions get it
+([steps](https://app.sabia.work/help/claude)); cloud sessions get it
 already signed in. For native usage, get the cloud session values in Sabia
 under Settings → Connected Tools → Connect a tool → Claude Code, and add them
 to a personal cloud environment. The README's
@@ -67,7 +67,8 @@ to a personal cloud environment. The README's
 | Usage does not appear in Sabia | Start a new session after connecting. Check `status`. |
 | A grant changed in Sabia has not applied | Narrowing applies at session start and takes effect from the next session. Tool output you asked for at `connect` but were not granted then applies once it is granted. Any other widening waits for your approval: ask Claude to approve it, or run `node scripts/sabia.mjs approve`. |
 | `status` says Sabia revoked this device | Run `disconnect` to clean up, then connect again. |
-| Reporting tools are missing or unauthorized | Repeat step 3. In a cloud session, connect the Sabia connector in Claude instead (step 4). |
+| Reporting tools are missing or unauthorized | Repeat step 3. Updating to 0.8.0 needs this once. In a cloud session, connect the Sabia connector in Claude instead (step 4). |
+| `/mcp` lists two Sabia servers | The Sabia connector added in Claude has the old address. Remove it in Claude's connector settings and add it again with `https://app.sabia.work/api/mcp/artifacts`. |
 | `connect` says this is a Claude Code cloud session | Set up cloud usage in Sabia instead (step 4). |
 | The Sabia connector answers `DISALLOWED_SOURCE` from Claude Code | It was connected before it covered Claude Code. Disconnect it in Claude's connector settings and connect again. |
 

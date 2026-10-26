@@ -2,7 +2,7 @@
   "mcpServers": {
     "sabia-artifacts": {
       "type": "http",
-      "url": "https://app2.sabiapartners.ca/api/mcp/artifacts"
+      "url": "https://app.sabia.work/api/mcp/artifacts"
     }
   }
 }
