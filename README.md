@@ -97,10 +97,13 @@ Everyone in your Sabia organization can read what this grant captures.
 > [!IMPORTANT]
 > The grant is managed in Sabia, and an owner or administrator can change
 > it later in **Settings → Usage connections**. Narrowing
-> applies at the device's next session start without asking. **Widening never
-> applies without you**: the plugin shows the request at each session start, and
-> nothing more is exported until you approve it on this device (ask Claude, or
-> run `approve`). To stop sharing, run `disconnect` or remove the device in Sabia.
+> applies at the device's next session start without asking. If you connected
+> without `--no-tool-output` and tool output was not granted then, you already
+> asked for it, so the session-start sync turns it on once an owner or
+> administrator grants it. **Otherwise, widening never applies without you**: the
+> plugin shows the request at each session start, and nothing more is exported
+> until you approve it on this device (ask Claude, or run `approve`). To stop
+> sharing, run `disconnect` or remove the device in Sabia.
 
 ## How it works
 

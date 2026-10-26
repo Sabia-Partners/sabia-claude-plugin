@@ -80,9 +80,10 @@ rule exists for them.
 
 Capture grants live in Sabia, and the plugin's SessionStart hook already runs
 `sabia.mjs sync --quiet` to converge this machine on them. A narrower grant
-applies on its own. A wider one does not: sync only records it and prints a
-notice that begins "Sabia: an administrator of … asked to widen what this
-device shares". Run `node <plugin-root>/scripts/sabia.mjs sync` by hand only
+applies on its own. So does the tool output the user asked for at `connect`
+and was not granted then. Any other wider grant does not: sync only records it
+and prints a notice that begins "Sabia: an administrator of … asked to widen
+what this device shares". Run `node <plugin-root>/scripts/sabia.mjs sync` by hand only
 when the user asks why a grant changed in the app has not applied yet — and
 remember the change lands at the start of the *next* session either way. Never
 edit the managed env variables directly to force a grant; the app is the
