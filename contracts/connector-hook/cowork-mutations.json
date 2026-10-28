@@ -1,5 +1,5 @@
 {
-  "description": "Connector write operations the cloud Cowork hook (hooks/hooks.json, mcp_tool) reports. Generated from the dashboard's claudeCodeConnectorHookContract() mutations; regenerate with node scripts/cowork-hook-matcher.mjs --write after a Work Source adds operations.",
+  "description": "Connector write operations the opt-in cloud Cowork hook (cowork-cloud/hooks/hooks.json, mcp_tool) reports. Generated from the dashboard's claudeCodeConnectorHookContract() mutations; regenerate with node scripts/cowork-hook-matcher.mjs --write after a Work Source adds operations. The hook sends a raw reply, so routers that also serve reads are excluded.",
   "version": 1,
   "mutations": [
     "API-create-a-comment",
@@ -139,5 +139,10 @@
     "update_work_item",
     "upload_file",
     "write_file"
-  ]
+  ],
+  "excluded": {
+    "mailchimp_campaigns": "Router: args.operation also selects get, get-content and list.",
+    "manage_campaign_objects": "HubSpot multi-action tool that also reads campaign objects.",
+    "manage_marketing_email": "HubSpot multi-action tool that also reads marketing emails."
+  }
 }

@@ -36,26 +36,6 @@
             "timeout": 10
           }
         ]
-      },
-      {
-        "matcher": "^mcp__.+__(?:.+[_:/])?(?:API-create-a-comment|API-post-page|accept_merge_request|addCommentToJiraIssue|addOrEditJiraIssueComment|add_comment|add_comment_to_issue|add_commit|add_issue_comment|add_review_to_pr|add_sheet|add_slide|apollo_accounts_bulk_create|apollo_accounts_create|apollo_bulk_create_accounts|apollo_bulk_create_contacts|apollo_contacts_bulk_create|apollo_contacts_create|apollo_create_account|apollo_create_contact|apollo_create_contacts|apollo_create_deal|apollo_create_task|apollo_deals_create|apollo_opportunities_create|apollo_sequences_create|apollo_tasks_create|apollo_write|apollo_write_destructive|append_text|append_values|asana_create_subtask|asana_create_task|batch_update|batch_update_document|batch_update_presentation|batch_update_spreadsheet|bulk_update_file_comments|clear_values|confluence_add_comment|confluence_add_inline_comment|confluence_copy_page|confluence_create_page|confluence_create_page_from_template|confluence_reply_to_comment|confluence_update_page|confluence_update_page_section|copyConfluenceContent|copy_file|createConfluenceComment|createConfluenceContent|createConfluenceFooterComment|createConfluenceInlineComment|createConfluencePage|createJiraIssue|create_campaign|create_comment|create_doc|create_file|create_issue|create_issue_note|create_item|create_items|create_merge_request|create_merge_request_discussion_note|create_merge_request_note|create_merge_request_thread|create_note|create_presentation_from_template|create_pull_request|create_pull_request_review|create_sheet|create_slide|create_task|create_tasks|create_update|create_updates|create_work_item|create_work_item_note|create_workitem_note|delete_text|duplicate_sheet_in_new_spreadsheet|enable_auto_merge|executeWrite|hubspot-batch-create-objects|hubspot-batch-update-objects|hubspot-create-engagement|hubspot-update-engagement|import_document|import_presentation|import_spreadsheet|insert_text|jira_add_comment|jira_assign_issue|jira_batch_create_issues|jira_create_customer_request|jira_create_issue|jira_link_to_epic|jira_transition_issue|mailchimp_add_campaign|mailchimp_campaigns|mailchimp_replicate_campaign|mailchimp_resend_campaign|mailchimp_send_campaign|manage_campaign_objects|manage_crm_objects|manage_marketing_email|merge_merge_request|merge_pull_request|notion-create-comment|notion-create-pages|notion-duplicate-page|replace_text|replicate_campaign|resend_to_non_openers|save-to-mailchimp|save_comment|save_issue|save_merge_request|save_merge_request_review|save_note|save_to_mailchimp|save_work_item|submit_pull_request_review|updateConfluenceContent|update_document|update_file|update_issue|update_issue_description_patch|update_merge_request|update_presentation|update_pull_request|update_spreadsheet|update_values|update_work_item|upload_file|write_file)$",
-        "hooks": [
-          {
-            "type": "mcp_tool",
-            "server": "Sabia",
-            "tool": "report_connector_result",
-            "input": {
-              "schema_version": 1,
-              "source_application": "cowork",
-              "tool_name": "${tool_name}",
-              "tool_use_id": "${tool_use_id}",
-              "session_id": "${session_id}",
-              "tool_input": "${tool_input}",
-              "tool_response": "${tool_response}"
-            },
-            "timeout": 10
-          }
-        ]
       }
     ]
   }

@@ -1,8 +1,10 @@
 # Changelog
 
-## 0.9.0
+## sabia-cowork-cloud 0.1.0
 
-- **Cowork in the cloud.** Cloud Cowork sessions load this plugin and run its hooks, but have no `settings.json` key, so the connector hook sent nothing there. A new `mcp_tool` PostToolUse hook reports the same connector writes through the Sabia connector added in Claude (named `Sabia`), which carries the person's sign-in. It runs only for the write operations in `contracts/connector-hook/cowork-mutations.json`, generated from the dashboard's connector hook contract (`node scripts/cowork-hook-matcher.mjs --write`). The hook passes the raw tool input and reply; Sabia keeps only the identifiers. Needs Cowork cloud capture turned on in Sabia, with Tool details allowed. Verified live on 2026-10-28: plugin hooks fire inside a cloud Cowork VM and an `mcp_tool` hook reaches the `Sabia` connector. Pairs with dashboard-langfuse's `report_connector_result`.
+- **Cowork in the cloud, as a separate opt-in plugin.** Cloud Cowork sessions load plugins and run their hooks, but have no `settings.json` key, so the Sabia plugin's connector hook sends nothing there. The new `sabia-cowork-cloud` plugin (in `cowork-cloud/`, listed in this marketplace) adds an `mcp_tool` PostToolUse hook that reports connector writes through the Sabia connector added in Claude (named `Sabia`), which carries the person's sign-in. A hook cannot trim on the machine, so it passes the full input and reply, and Sabia keeps only the identifiers. Because of that it is never part of the main `sabia` plugin: adding it is the opt-in, and removing it stops the sending. Sabia also stores nothing unless Cowork cloud capture is on and Tool details is allowed.
+- It runs only for the write operations in `contracts/connector-hook/cowork-mutations.json`, generated from the dashboard's connector hook contract (`node scripts/cowork-hook-matcher.mjs --write`), matched without regard to case as the server does. Routers that also serve reads (`mailchimp_campaigns`, HubSpot's `manage_campaign_objects` and `manage_marketing_email`) are excluded, so a read's reply is never sent.
+- Verified live on 2026-10-28: plugin hooks fire inside a cloud Cowork VM, and an `mcp_tool` hook reaches the `Sabia` connector. Pairs with dashboard-langfuse's `report_connector_result` (#587).
 
 ## 0.8.0
 

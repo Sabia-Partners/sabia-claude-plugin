@@ -135,8 +135,8 @@ flowchart LR
 | [`scripts/sabia.mjs`](scripts/sabia.mjs) | Writes and removes the managed OpenTelemetry block in `settings.json`. Unrelated keys are preserved. |
 | [`scripts/sabia-report-binding.mjs`](scripts/sabia-report-binding.mjs) | Links an accepted report to the tool call and session that made it. |
 | [`scripts/sabia-connector-hook.mjs`](scripts/sabia-connector-hook.mjs) | Under the tool-output grant only: after a successful connector mutation, sends the identifiers in its reply. Claude Code before 2.1.283 exports connector arguments but never their results, so without it a Doc created through the Drive connector cannot be identified on those clients. Which operations count and which identifiers it keeps come from Sabia's connector hook contract, fetched with the native usage key, cached for 24 hours and replaced by the last good copy, then the bundled v1 contract, when Sabia cannot be reached. Reads, other connectors and failed calls send nothing; there is no retry spool. |
-| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after a report, the connector hook after MCP tools, and, in cloud Cowork, the connector write through the Sabia connector. |
-| [`scripts/cowork-hook-matcher.mjs`](scripts/cowork-hook-matcher.mjs) | Builds the cloud Cowork hook's matcher from `contracts/connector-hook/cowork-mutations.json`; `--write` updates `hooks/hooks.json`. |
+| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after a report, and the connector hook after MCP tools. |
+| [`scripts/cowork-hook-matcher.mjs`](scripts/cowork-hook-matcher.mjs) | Builds the matcher of the opt-in `sabia-cowork-cloud` plugin's hook from `contracts/connector-hook/cowork-mutations.json`; `--write` updates `cowork-cloud/hooks/hooks.json`. |
 
 ### Everything this plugin runs, sends and fetches
 
@@ -241,29 +241,32 @@ runs, so code in the session cannot read the key.
 ### Cowork in the cloud
 
 Cowork sessions also run on Anthropic's machines (on Pro and Max since
-October 2026), but unlike Claude Code cloud sessions they do load the plugins
-on your Claude account, with their hooks. There is no `settings.json` key
-there, so the local connector hook sends nothing. A second hook reports the
-same connector writes through the Sabia connector you added in Claude, which
-carries your sign-in:
+October 2026). Unlike Claude Code cloud sessions they load the plugins on your
+Claude account, with their hooks, but there is no `settings.json` key there,
+so this plugin's connector hook sends nothing. A separate, opt-in plugin,
+**Sabia Cowork cloud capture** ([`cowork-cloud/`](cowork-cloud/README.md),
+`sabia-cowork-cloud` in this marketplace), reports the same connector writes
+through the Sabia connector you added in Claude, which carries your sign-in:
 
-1. Add the Sabia connector in Claude, as above, so that it is named
-   **Sabia**. The hook calls it by that name.
-2. Add this plugin to your Claude account (Customize, then Plugins).
-3. In Sabia, go to **Settings → Connected Tools**, open Claude Cowork and
+1. In Sabia, go to **Settings → Connected Tools**, open Claude Cowork and
    select **Turn on cloud capture**. Tool details must be allowed for it,
    which an owner or administrator does.
+2. Add the Sabia connector in Claude, as above, so that it is named
+   **Sabia**. The hook calls it by that name.
+3. Add **Sabia Cowork cloud capture** to your Claude account (Customize, then
+   Plugins).
 
 After a successful connector write in a cloud Cowork session, such as a Notion
-page or a HubSpot deal, the hook passes the tool's name, input and reply to
+page or a HubSpot deal, its hook passes the tool's name, input and reply to
 Sabia's `report_connector_result` tool. The matcher selects only the write
 operations in
 [`contracts/connector-hook/cowork-mutations.json`](contracts/connector-hook/cowork-mutations.json),
-so reads send nothing. A hook cannot trim a reply on the machine, so the whole
-input and reply reach Sabia, which keeps only the identifiers of the item
-created or changed and discards the rest. On your computer the connector is
-named `claude.ai Sabia`, so this hook does not reach it and the local
-connector hook reports instead.
+in any case, and leaves out routers that also serve reads, so reads send
+nothing. A hook cannot trim a reply on the machine, so the whole input and
+reply reach Sabia, which keeps only the identifiers and discards the rest.
+That is why it is a separate plugin: adding it is the opt-in, and removing it
+stops the sending. Sabia stores nothing from it unless cloud capture is on and
+Tool details is allowed.
 
 Two other places that look right do not work. Network secrets never reach
 Claude Code's telemetry export. A repository's `.claude/settings.json` cannot

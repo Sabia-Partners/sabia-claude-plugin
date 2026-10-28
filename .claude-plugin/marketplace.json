@@ -15,6 +15,11 @@
       "name": "sabia",
       "source": "./",
       "description": "Report completed work and connect Claude Code token usage to Sabia."
+    },
+    {
+      "name": "sabia-cowork-cloud",
+      "source": "./cowork-cloud",
+      "description": "Opt-in: report connector writes from cloud Cowork sessions through the Sabia connector."
     }
   ]
 }
