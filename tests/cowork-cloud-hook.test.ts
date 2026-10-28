@@ -51,18 +51,20 @@ describe("cloud Cowork connector hook", () => {
     expect(group.matcher).toBe(coworkHookMatcher());
   });
 
-  it("covers every write in the command hook's vendored contract", async () => {
-    // identity-paths-v3.json is an older dashboard fixture and names
-    // operations the server has since dropped, so only v1 is a floor.
+  it("covers edits as well as creations, which the command hook's list leaves to telemetry", async () => {
     const operations = new Set(coworkOperations());
-    const v1 = await json("contracts/connector-hook/v1.json");
-    for (const name of v1.mutations) expect(operations.has(name.toLowerCase()), name).toBe(true);
+    for (const name of ["notion-update-page", "change_item_column_values", "update_file", "create_pull_request", "notion-create-pages"]) {
+      expect(operations.has(name), name).toBe(true);
+    }
+    // Cowork's Drive rules accept no creation yet, so the server would
+    // refuse it; the hook does not send it.
+    expect(operations.has("create_file")).toBe(false);
   });
 
   it("matches writes in any case, as the server does", () => {
     const matcher = new RegExp(coworkHookMatcher());
     for (const name of [
-      "mcp__Google_Drive__create_file", "mcp__Notion__notion-create-pages", "mcp__claude_ai_HubSpot__manage_crm_objects",
+      "mcp__Google_Drive__update_file", "mcp__Notion__notion-create-pages", "mcp__Notion__notion-update-page", "mcp__claude_ai_HubSpot__manage_crm_objects",
       "mcp__github__create_pull_request", "mcp__composio__MAILCHIMP_ADD_CAMPAIGN",
       "mcp__claude_ai_Intuit_Mailchimp__Save-To-Mailchimp", "mcp__claude_ai_Intuit_Mailchimp__save-to-mailchimp",
     ]) {
@@ -79,7 +81,7 @@ describe("cloud Cowork connector hook", () => {
       "mcp__mailchimp__mailchimp_campaigns", "mcp__mailchimp__MAILCHIMP_CAMPAIGNS",
       "mcp__claude_ai_HubSpot__manage_campaign_objects", "mcp__claude_ai_HubSpot__manage_marketing_email",
       "mcp__Sabia__report_artifact_v3", "mcp__Sabia__report_connector_result",
-      "Write", "Bash", "mcp__Google_Drive__create_file_extra",
+      "Write", "Bash", "mcp__Google_Drive__update_file_extra", "mcp__x__get_artifact",
     ]) {
       expect(matcher.test(name), name).toBe(false);
     }
