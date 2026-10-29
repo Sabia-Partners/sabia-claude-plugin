@@ -182,7 +182,7 @@ set, and in `~/.claude` otherwise.
 1. `node scripts/sabia.mjs disconnect` revokes the native usage key and
    restores whatever the managed variables held before.
 2. `/mcp` → `plugin:sabia:sabia-artifacts` → *Clear authentication* disconnects reporting on
-   this machine. Revoke it for good in Sabia → Settings → Connected Tools → Manage.
+   this machine. Revoke it for good in Sabia → Settings → AI Tools → Manage.
 3. `/plugin uninstall sabia@sabia`.
 
 Records Sabia already accepted stay in your workspace.
@@ -209,7 +209,7 @@ exporter variables are set on the cloud environment itself. This works on Pro,
 Max, Team and Enterprise. `connect` refuses to run in a cloud session, because
 nothing it writes there would be read again.
 
-1. In Sabia, go to **Settings → Connected Tools**, select **Connect a tool**,
+1. In Sabia, go to **Settings → AI Tools**, select **Connect a tool**,
    then **Set up** on Claude Code, and select **Get cloud session values**. Sabia issues a key for
    your cloud sessions only and shows the variables once. Issuing again
    revokes the previous key.
@@ -248,13 +248,19 @@ so this plugin's connector hook sends nothing. A separate, opt-in plugin,
 `sabia-cowork-cloud` in this marketplace), reports the same connector writes
 through the Sabia connector you added in Claude, which carries your sign-in:
 
-1. In Sabia, go to **Settings → Connected Tools**, open Claude Cowork and
+1. In Sabia, go to **Settings → AI Tools**, open Claude Cowork and
    select **Turn on cloud capture**. Tool details must be allowed for it,
    which an owner or administrator does.
 2. Add the Sabia connector in Claude, as above, so that it is named
    **Sabia**. The hook calls it by that name.
 3. Add **Sabia Cowork cloud capture** to your Claude account (Customize, then
    Plugins).
+4. In Claude, under Customize, then Connectors, open Sabia and set **Cowork
+   cloud capture (plugin only)** to **Always allow**. If it is not listed,
+   choose the **⋯** menu next to Disconnect, then **Refresh tools list**; Sabia
+   lists it only once cloud capture is on. A hook cannot ask for approval, so
+   until this is set Claude refuses each call with "MCP tool call requires
+   approval" and nothing reaches Sabia.
 
 After a successful connector write in a cloud Cowork session, such as a Notion
 page or a HubSpot deal, its hook passes the tool's name, input and reply to
