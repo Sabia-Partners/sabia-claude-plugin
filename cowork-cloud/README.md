@@ -1,0 +1,13 @@
+# Sabia Cowork cloud capture
+
+An opt-in companion to the Sabia plugin, for Cowork sessions that run in Anthropic's cloud. There, the Sabia plugin's own connector hook has no key and sends nothing, so this plugin reports the same connector writes, such as a Notion page created or a HubSpot deal updated, through the Sabia connector you added in Claude.
+
+## Use it
+
+1. In Sabia, go to Settings, Connected Tools, Claude Cowork, and turn on cloud capture. An owner or administrator must allow Tool details for it.
+2. Add the Sabia connector in Claude (Customize, then Connectors), named Sabia.
+3. Add this plugin to your Claude account (Customize, then Plugins).
+
+## Data
+
+After each successful write by a connector tool Sabia supports, the hook passes the tool's name, its full input and its full reply to the Sabia connector's report_connector_result tool. A hook cannot trim a reply on the machine, so document or email text in that input or reply reaches Sabia. Sabia keeps only the identifiers of the item created or changed (ids, keys, names and links) and discards the rest, and it stores nothing when cloud capture is off or Tool details is not allowed. Reads, failed calls and tools that also perform reads are never matched. Remove this plugin to stop sending.
