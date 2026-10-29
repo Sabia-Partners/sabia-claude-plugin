@@ -4,7 +4,7 @@
 
 - **New Google Docs, Sheets, Slides and Drive files count.** The hook now also runs for the eight Drive creation operations (`create_file`, `copy_file`, `upload_file`, `import_document`, `import_spreadsheet`, `import_presentation`, `create_presentation_from_template`, `duplicate_sheet_in_new_spreadsheet`), as `contracts/connector-hook/cowork-mutations.json` now lists them. A creation counts by the id its reply returns. Pairs with the dashboard change that lets Cowork's Drive rules accept creations.
 - **Install it from this marketplace.** In Claude, choose Customize, then Plugins, then Add, then Add marketplace, enter `Sabia-Partners/sabia-claude-plugin`, and install Sabia Cowork cloud capture. A version installed this way updates with the marketplace; an uploaded zip does not.
-- While the plugin is working for someone, Sabia tells Cowork not to report the connector writes it records, so one change makes one Output.
+- When Claude reports a change this plugin captured moments earlier, Sabia refuses the report as a repeat, so one change makes one Output. A change the plugin did not capture is still reported.
 
 ## sabia-cowork-cloud 0.1.0
 
