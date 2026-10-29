@@ -4,9 +4,10 @@ An opt-in companion to the Sabia plugin, for Cowork sessions that run in Anthrop
 
 ## Use it
 
-1. In Sabia, go to Settings, Connected Tools, Claude Cowork, and turn on cloud capture. An owner or administrator must allow Tool details for it.
+1. In Sabia, go to Settings, AI Tools, Claude Cowork, and turn on cloud capture. An owner or administrator must allow Tool details for it.
 2. Add the Sabia connector in Claude (Customize, then Connectors), named Sabia.
 3. Add this plugin to your Claude account (Customize, then Plugins).
+4. In Claude, under Customize, then Connectors, open Sabia and set Cowork cloud capture (plugin only) to Always allow. If it is not listed, choose the ⋯ menu next to Disconnect, then Refresh tools list; Sabia lists it only once cloud capture is on. A hook cannot ask for approval, so until this is set Claude refuses each call and nothing reaches Sabia.
 
 ## Data
 
