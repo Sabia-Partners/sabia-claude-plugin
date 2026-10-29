@@ -56,15 +56,16 @@ describe("cloud Cowork connector hook", () => {
     for (const name of ["notion-update-page", "change_item_column_values", "update_file", "create_pull_request", "notion-create-pages"]) {
       expect(operations.has(name), name).toBe(true);
     }
-    // Cowork's Drive rules accept no creation yet, so the server would
-    // refuse it; the hook does not send it.
-    expect(operations.has("create_file")).toBe(false);
+    // Cowork's Drive rules accept creations by the id their reply returns.
+    for (const name of ["create_file", "copy_file", "upload_file", "import_document"]) {
+      expect(operations.has(name), name).toBe(true);
+    }
   });
 
   it("matches writes in any case, as the server does", () => {
     const matcher = new RegExp(coworkHookMatcher());
     for (const name of [
-      "mcp__Google_Drive__update_file", "mcp__Notion__notion-create-pages", "mcp__Notion__notion-update-page", "mcp__claude_ai_HubSpot__manage_crm_objects",
+      "mcp__Google_Drive__update_file", "mcp__Google_Drive__create_file", "mcp__Notion__notion-create-pages", "mcp__Notion__notion-update-page", "mcp__claude_ai_HubSpot__manage_crm_objects",
       "mcp__github__create_pull_request", "mcp__composio__MAILCHIMP_ADD_CAMPAIGN",
       "mcp__claude_ai_Intuit_Mailchimp__Save-To-Mailchimp", "mcp__claude_ai_Intuit_Mailchimp__save-to-mailchimp",
     ]) {

@@ -253,8 +253,11 @@ through the Sabia connector you added in Claude, which carries your sign-in:
    which an owner or administrator does.
 2. Add the Sabia connector in Claude, as above, so that it is named
    **Sabia**. The hook calls it by that name.
-3. Add **Sabia Cowork cloud capture** to your Claude account (Customize, then
-   Plugins).
+3. Add **Sabia Cowork cloud capture** to your Claude account: under
+   Customize, then Plugins, choose **Add**, then **Add marketplace**, enter
+   `Sabia-Partners/sabia-claude-plugin`, and install it from that
+   marketplace. Installed this way it updates with the marketplace; an
+   uploaded zip does not.
 4. In Claude, under Customize, then Connectors, open Sabia and set **Cowork
    cloud capture (plugin only)** to **Always allow**. If it is not listed,
    choose the **⋯** menu next to Disconnect, then **Refresh tools list**; Sabia

@@ -1,5 +1,11 @@
 # Changelog
 
+## sabia-cowork-cloud 0.2.0
+
+- **New Google Docs, Sheets, Slides and Drive files count.** The hook now also runs for the eight Drive creation operations (`create_file`, `copy_file`, `upload_file`, `import_document`, `import_spreadsheet`, `import_presentation`, `create_presentation_from_template`, `duplicate_sheet_in_new_spreadsheet`), as `contracts/connector-hook/cowork-mutations.json` now lists them. A creation counts by the id its reply returns. Pairs with the dashboard change that lets Cowork's Drive rules accept creations.
+- **Install it from this marketplace.** In Claude, choose Customize, then Plugins, then Add, then Add marketplace, enter `Sabia-Partners/sabia-claude-plugin`, and install Sabia Cowork cloud capture. A version installed this way updates with the marketplace; an uploaded zip does not.
+- While the plugin is working for someone, Sabia tells Cowork not to report the connector writes it records, so one change makes one Output.
+
 ## sabia-cowork-cloud 0.1.0
 
 - **Cowork in the cloud, as a separate opt-in plugin.** Cloud Cowork sessions load plugins and run their hooks, but have no `settings.json` key, so the Sabia plugin's connector hook sends nothing there. The new `sabia-cowork-cloud` plugin (in `cowork-cloud/`, listed in this marketplace) adds an `mcp_tool` PostToolUse hook that reports connector writes through the Sabia connector added in Claude (named `Sabia`), which carries the person's sign-in. A hook cannot trim on the machine, so it passes the full input and reply, and Sabia keeps only the identifiers. Because of that it is never part of the main `sabia` plugin: adding it is the opt-in, and removing it stops the sending. Sabia also stores nothing unless Cowork cloud capture is on and Tool details is allowed.
