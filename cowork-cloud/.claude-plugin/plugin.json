@@ -1,7 +1,7 @@
 {
   "name": "sabia-cowork-cloud",
   "displayName": "Sabia Cowork cloud capture",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Opt-in: reports connector writes from cloud Cowork sessions to Sabia through the Sabia connector. Sends each write's full input and reply; Sabia keeps only the identifiers. Add it only after turning on Cowork cloud capture in Sabia.",
   "author": {
     "name": "Sabia Partners",
