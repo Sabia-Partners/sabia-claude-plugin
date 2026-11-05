@@ -1,6 +1,6 @@
 ---
 name: report-artifact
-description: Report metadata about work Claude Code has successfully created, materially updated, sent, published or delivered to Sabia through its authenticated hosted MCP tools. Use after a qualifying completed operation when Sabia Output Reporting is connected.
+description: Report metadata about work Claude Code has successfully created, materially updated, sent, published or delivered, in any system, to Sabia through its authenticated hosted MCP tools. Use after a qualifying completed operation when Sabia Output Reporting is connected.
 ---
 
 # Report completed work to Sabia
@@ -65,12 +65,20 @@ In Claude Code the producing operation is usually a tool result you can read:
 - A document, spreadsheet, presentation or other file the user asked to
   receive, written on this computer: `create` or `update` on `host`, or
   `deliver` of a `file`.
+- An email sent through a connected Gmail tool: `send` of an `email` on
+  `gmail`. An Apollo contact, company, deal, task, sequence or email draft
+  created or changed: `apollo`.
+- An explicit creation or update in any other system, when the successful tool
+  result names what was made: `source_system` `other`, and lowercase slugs for
+  `artifact_type` and `action`, such as `release` and `publish`. A new action
+  on a type listed above, such as merging a pull request, keeps that type's
+  `source_system` and `artifact_type`.
 
-Slack messages, web publications and email cannot be reported yet; do not ask
-the contract about them.
+Slack messages cannot be reported; do not ask the contract about them.
 
-Do not report reads, searches, plans, promises, failed or cancelled writes,
-ordinary answers with no identifiable deliverable, no-op saves or autosaves.
+Do not report reads, searches, previews, downloads, lookups, plans, promises,
+failed or cancelled writes, ordinary answers with no identifiable deliverable,
+no-op saves or autosaves.
 Files edited inside the working tree with `Write`, `Edit` or a shell are the
 work in progress, not a delivered Artifact: they become reportable when they
 reach a durable target such as a pull request, a pushed commit or a delivered
@@ -88,9 +96,17 @@ and `configuration_revision`, the authorized `artifact_scopes`, and an example.
 Act on its `status`:
 
 - `available`: call `report_artifact_v3` with exactly what the contract
-  describes. Where this skill and the contract differ, the contract wins.
+  describes. Where this skill and the contract differ, the contract wins. When
+  it carries `fallback`, follow its `fallback_guidance`. For `fallback`
+  `unresolved`, send `artifact` as null and an `artifact_hint` with only what
+  the successful tool result returned: `system` (required for `other`),
+  `object_id` and/or an `https` `url`, and `title`. Never invent an ID, URL or
+  title; the title is what people see for the Output until it is linked.
+- `update_pending`: Sabia is mid-update. Nothing was refused; ask for the
+  contract again later in the task and report with the same `event_id`. A
+  report answered `REPORTING_UPDATE_PENDING` is retried the same way.
 - `unsupported`, `not_selected` or `disabled`: stop. Tell the user in one
-  sentence and do not report another way.
+  sentence and do not report another way, including under `other`.
 
 If `report_artifact_v3` answers `CONFIGURATION_CHANGED` or
 `CONTRACT_INCOMPATIBLE`, nothing was accepted: ask for the contract once more
@@ -99,10 +115,10 @@ and resend with the same `event_id`.
 Mint a stable `event_id` once the operation has succeeded and keep it with the
 report; reuse it and the identical request for every retry.
 `source_application` is `claude_code`. The Artifact's source system (`github`,
-`google_drive`, `linear`, `host`) is where the object lives, not the
-application that produced it. The service fixes the authenticated organization,
-reporter and collection method `skill_tool`; do not send credentials or
-identifiers for them.
+`google_drive`, `linear`, `host`, `gmail`, `apollo`, or `other`) is where the
+object lives, not the application that produced it. The service fixes the
+authenticated organization, reporter and collection method `skill_tool`; do not
+send credentials or identifiers for them.
 
 Use actual identities from the successful operation. Never infer one from a
 title or manufacture a URL, ID or scope:

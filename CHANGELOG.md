@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+
+- **Work in any system counts.** The `report-artifact` skill asks the contract about an explicit creation or update in a system, type or action Sabia does not list, with `source_system` `other` for an unlisted system and lowercase slugs for the type and action. It follows the contract's `fallback_guidance`: a new action on a listed type, such as a pull request merge, is reported on that Artifact; anything else is sent with `artifact` null and an `artifact_hint` taken only from the tool's result, and is recorded as an Unresolved Output. Reads, searches, previews and downloads are still not reported, and Slack still cannot be. `update_pending` means Sabia is mid-update: ask again later and keep the `event_id`. Gmail sends and Apollo records are listed too. Pairs with dashboard-langfuse#675.
+
 ## sabia-cowork-cloud 0.2.0
 
 - **New Google Docs, Sheets, Slides and Drive files count.** The hook now also runs for the eight Drive creation operations (`create_file`, `copy_file`, `upload_file`, `import_document`, `import_spreadsheet`, `import_presentation`, `create_presentation_from_template`, `duplicate_sheet_in_new_spreadsheet`), as `contracts/connector-hook/cowork-mutations.json` now lists them. A creation counts by the id its reply returns. Pairs with the dashboard change that lets Cowork's Drive rules accept creations.
