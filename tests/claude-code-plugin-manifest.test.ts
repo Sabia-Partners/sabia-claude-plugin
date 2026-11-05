@@ -82,10 +82,10 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(skill).toMatch(/Do not use\s+`report_artifact`:/);
     expect(skill).not.toContain("schema version 2");
     // v3 identities and actions: a review is not an update, Drive and Linear need
-    // the contract's scope_ref, and Slack has no fallback.
+    // the contract's scope_ref, and no Source is refused here: the contract decides.
     expect(skill).toMatch(/review that printed its URL is `review`/);
     expect(skill).toContain("exact `scope_ref`");
-    expect(skill).toMatch(/Slack has no fallback: report no other\s+Slack type or action/);
+    expect(skill).not.toMatch(/cannot be reported|Slack/);
     // Work without a reporting definition: `other` for an unlisted system, and
     // an unresolved fallback sends artifact null with the tool's own hint.
     expect(skill).toMatch(/`source_system` `other`, and lowercase slugs/);
