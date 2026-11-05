@@ -69,12 +69,12 @@ created at the command line is identifiable from its stdout. Before Claude
 Code 2.1.283 MCP tool *create* results are not exported by the client, so the
 plugin's `PostToolUse` hook
 (`scripts/sabia-connector-hook.mjs`) sends the identifiers from the reply of a
-successful Drive or GitHub connector mutation — file or pull request ids, names
-and links, nothing else — under this same grant; a Doc created through the
-Drive connector is identifiable that way. MCP *updates* that carry the
-identifier in their arguments (an `issue_number`, a `pull_number`) are
-identifiable from the export alone. Other connectors produce nothing until a
-rule exists for them.
+successful connector mutation that Sabia's connector hook contract lists, such
+as Drive or GitHub — file, pull request or record ids, keys, names and links,
+nothing else — under this same grant; a Doc created through the Drive connector
+is identifiable that way. MCP *updates* that carry the identifier in their
+arguments (an `issue_number`, a `pull_number`) are identifiable from the export
+alone. Other connectors produce nothing until that contract has a rule for them.
 
 ## Sync
 

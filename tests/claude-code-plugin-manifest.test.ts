@@ -86,6 +86,9 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(skill).toMatch(/review that printed its URL is `review`/);
     expect(skill).toContain("exact `scope_ref`");
     expect(skill).not.toMatch(/cannot be reported|Slack/);
+    // Named systems are hints, not the whole list, and no act is ruled out here.
+    expect(skill).toMatch(/the contract decides what Sabia\s+accepts/);
+    expect(skill).not.toMatch(/is not reportable|`apollo`, or `other`\)/);
     // Work without a reporting definition: `other` for an unlisted system, and
     // an unresolved fallback sends artifact null with the tool's own hint.
     expect(skill).toMatch(/`source_system` `other`, and lowercase slugs/);
