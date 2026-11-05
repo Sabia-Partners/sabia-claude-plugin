@@ -48,13 +48,15 @@ returns a download is one event; a later, separately requested delivery is
 another. A material update changes content, findings, formulas, data,
 functionality or requested presentation structure.
 
-In Claude Code the producing operation is usually a tool result you can read:
+In Claude Code the producing operation is usually a tool result you can read.
+These are common names, not the whole list: the contract decides what Sabia
+accepts, so ask it about any other completed work too.
 
 - `gh pr create` or `gh issue create` printed the new URL: `create` on
   `github`. A pull request review that printed its URL is `review` on that pull
   request, and a comment is `comment`; a material change to the pull request or
   issue itself is `update`. A `gh` call that exited 0 but printed nothing
-  identifiable is not reportable.
+  identifiable has no identity to send: never guess one.
 - A commit pushed to a remote is `publish` of a `github` `commit`, only once
   the push succeeded and the commit SHA is known; a local commit is not.
 - A Google Doc, Sheet, Slides or Drive file created or revised through a
@@ -68,13 +70,11 @@ In Claude Code the producing operation is usually a tool result you can read:
 - An email sent through a connected Gmail tool: `send` of an `email` on
   `gmail`. An Apollo contact, company, deal, task, sequence or email draft
   created or changed: `apollo`.
-- An explicit creation or update in any other system, when the successful tool
-  result names what was made: `source_system` `other`, and lowercase slugs for
-  `artifact_type` and `action`, such as `release` and `publish`. A new action
-  on a type listed above, such as merging a pull request, keeps that type's
-  `source_system` and `artifact_type`.
-
-Slack messages cannot be reported; do not ask the contract about them.
+- An explicit creation or update in a system Sabia does not list:
+  `source_system` `other`, and lowercase slugs for `artifact_type` and
+  `action`, such as `release` and `publish`. A new action on a type listed
+  above, such as merging a pull request, keeps that type's `source_system` and
+  `artifact_type`.
 
 Do not report reads, searches, previews, downloads, lookups, plans, promises,
 failed or cancelled writes, ordinary answers with no identifiable deliverable,
@@ -114,8 +114,8 @@ and resend with the same `event_id`.
 
 Mint a stable `event_id` once the operation has succeeded and keep it with the
 report; reuse it and the identical request for every retry.
-`source_application` is `claude_code`. The Artifact's source system (`github`,
-`google_drive`, `linear`, `host`, `gmail`, `apollo`, or `other`) is where the
+`source_application` is `claude_code`. The Artifact's source system (such as
+`github` or `host`, or `other` for one the contract does not list) is where the
 object lives, not the application that produced it. The service fixes the
 authenticated organization, reporter and collection method `skill_tool`; do not
 send credentials or identifiers for them.
