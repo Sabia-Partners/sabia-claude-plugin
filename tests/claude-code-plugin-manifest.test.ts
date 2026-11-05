@@ -85,7 +85,13 @@ describe("Sabia for Claude Code plugin manifest", () => {
     // the contract's scope_ref, and unsupported sources are not reported at all.
     expect(skill).toMatch(/review that printed its URL is `review`/);
     expect(skill).toContain("exact `scope_ref`");
-    expect(skill).toMatch(/Slack messages, web publications and email cannot be reported/);
+    expect(skill).toMatch(/Slack messages cannot be reported/);
+    // Work without a reporting definition: `other` for an unlisted system, and
+    // an unresolved fallback sends artifact null with the tool's own hint.
+    expect(skill).toMatch(/`source_system` `other`, and lowercase slugs/);
+    expect(skill).toMatch(/follow its `fallback_guidance`/);
+    expect(skill).toMatch(/Never invent an ID, URL or\s+title/);
+    expect(skill).toMatch(/`update_pending`: Sabia is mid-update/);
     expect(skill).not.toMatch(/`send` on `slack`|artifact_account_id|availability `host_local`/);
     expect(skill).toMatch(/`source_application` is\s+`claude_code`/);
     expect(skill).toContain("original `event_id`");
