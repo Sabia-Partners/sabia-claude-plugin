@@ -68,13 +68,14 @@ In Claude Code the producing operation is usually a tool result you can read:
 - An email sent through a connected Gmail tool: `send` of an `email` on
   `gmail`. An Apollo contact, company, deal, task, sequence or email draft
   created or changed: `apollo`.
+- A Slack message sent or edited through a connected Slack tool: `send` or
+  `update` of a `message` on `slack`. Slack has no fallback: report no other
+  Slack type or action.
 - An explicit creation or update in any other system, when the successful tool
   result names what was made: `source_system` `other`, and lowercase slugs for
   `artifact_type` and `action`, such as `release` and `publish`. A new action
   on a type listed above, such as merging a pull request, keeps that type's
   `source_system` and `artifact_type`.
-
-Slack messages cannot be reported; do not ask the contract about them.
 
 Do not report reads, searches, previews, downloads, lookups, plans, promises,
 failed or cancelled writes, ordinary answers with no identifiable deliverable,
