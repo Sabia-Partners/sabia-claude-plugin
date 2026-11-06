@@ -1,6 +1,6 @@
 ---
 name: report-artifact
-description: Report metadata about work Claude Code has successfully created, materially updated, sent, published or delivered, in any system, to Sabia through its authenticated hosted MCP tools. Use after a qualifying completed operation when Sabia Output Reporting is connected.
+description: Use when planning or completing durable work in any system from Claude Code with Sabia Output Reporting connected, even without an explicit reporting request. Retain real producing evidence immediately and reconcile every successful operation to a receipt or explicit blocker.
 ---
 
 # Report completed work to Sabia
@@ -9,6 +9,60 @@ Output Reporting records completed actions on durable work, such as documents,
 pull requests and presentations. Creating a document and later materially editing
 it produces two Outputs linked to one Artifact. A generated response or trace
 alone does not qualify.
+
+## Plan, retain and reconcile reporting
+
+Apply this skill while planning a task that may produce durable work, even when
+an ordinary request mentions only creating or changing that work. Add a reporting
+checkpoint to the task plan (or keep it in working context for a short task).
+The agent performing the successful producing operation owns reporting by default;
+do not wait for the user to say “report” or “Sync Sabia”. Planning creates no
+Output, discovers no grant and authorizes no producing operation. When activated,
+carry out these checkpoints for every qualifying operation. Skill selection is
+host-dependent; these instructions do not guarantee implicit activation.
+
+Immediately after each successful qualifying operation, before another operation,
+compaction or delegation handoff can lose its result, retain a minimal occurrence
+record in the current authorized task context:
+
+- The reporting owner and actual producing host/application, established from the
+  host; the verified reporting route when known, otherwise an explicit unknown.
+- The successful action, Source/type and target identity actually returned, and
+  the exact producing account when established. Unknown accounts remain unknown;
+  a single available scope, model name or coordinator identity proves no account.
+- The real allowed provider event, revision or producing tool-call reference,
+  and the observed success. Preserve these fields from the mutation result now;
+  a later object read cannot recover proof of the original action.
+- One stable `event_id` once the successful occurrence qualifies, its reporting
+  state, and, before submission, the exact finalized request. Immediately retain
+  the returned receipt or the failure/uncertainty and bounded recovery state.
+
+Keep only necessary metadata in task context, not full tool payloads, bodies,
+transcripts, credentials, receipt proofs or a new disk spool. Keep summary prose
+only in the authorized exact request, never a producer cache or diagnostic log.
+Missing identity/scope follows the discovered null-Artifact rules; missing allowed
+successful action evidence blocks submission even with `artifact: null`.
+
+When delegating, explicitly include reporting ownership in the work instructions.
+The producing agent should apply this skill on its actual supported host and
+return the minimal occurrence record with its original event ID, reporting route,
+exact submitted request if attempted, and receipt or explicit blocker. A
+coordinator verifies each delegated outcome before finishing; it must not assume
+that a worker reported, repeat its mutation, relabel its host/account, infer a
+session, or submit a second report for the same occurrence. Transfer ownership
+explicitly only when the recipient can use the same authorized producing route
+and retained evidence; an uncertain attempt keeps its original request and ID.
+An unsupported delegated host remains a blocker; coordination supplies no grant.
+
+Before the final response, reconcile every successful qualifying occurrence,
+including each target in a multi-output task and each delegated result, to either
+a returned accepted/recovered receipt or an explicit reporting blocker. Distinct
+acts/targets retain separate event IDs; intermediate writes in one coherent edit
+remain coalesced. An attempt alone is not acceptance. State missing tools,
+unsupported host, missing evidence, denied consent or uncertain receipt briefly
+and accurately; pending or deferred recovery is still unresolved. Continue the
+user's completed work without claiming it was reported. Never create another
+Output to repair reporting, and never recursively report this reconciliation.
 
 Use the connected `get_reporting_contract` and `report_artifact_v3` tools after
 the producing operation has succeeded. They reach Claude Code from one of two
@@ -109,8 +163,10 @@ Act on its `status`:
   sentence and do not report another way, including under `other`.
 
 If `report_artifact_v3` answers `CONFIGURATION_CHANGED` or
-`CONTRACT_INCOMPATIBLE`, nothing was accepted: ask for the contract once more
-and resend with the same `event_id`.
+`CONTRACT_INCOMPATIBLE`, recover the original receipt first. Only after an
+explicit not-found result, refresh the contract once and correct a provably
+unaccepted request with the same `event_id`. Never change an uncertain or
+accepted request.
 
 Mint a stable `event_id` once the operation has succeeded and keep it with the
 report; reuse it and the identical request for every retry.
@@ -126,8 +182,9 @@ title or manufacture a URL, ID or scope:
 - GitHub: the pull request's or issue's own URL without a fragment, or
   `owner`, `repository` and `number`; never a review or comment link. For a
   commit, its URL or `owner`, `repository` and the full `commit_sha`.
-- Google Drive: the contract's exact `scope_ref` plus the `file_id` or URL from
-  the tool result.
+- Google Drive: the contract's exact `scope_ref` bound to the account established
+  by the successful operation, plus the `file_id` or URL from the tool result.
+  An unknown account or a single available scope establishes no scope.
 - Linear: the contract's exact `scope_ref` plus the issue `identifier` (such as
   `ENG-123`) or its URL, and `comment_id` for a comment.
 - Host: the file's absolute `path` and a stable `workspace_id` for the
