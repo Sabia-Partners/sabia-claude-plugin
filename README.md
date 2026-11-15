@@ -77,8 +77,8 @@ keeps and for how long.
 
 | Piece | What it does |
 | --- | --- |
-| [`.mcp.json`](.mcp.json) | Bundles Sabia's hosted MCP server as `sabia-artifacts`. It is HTTP with OAuth, and nothing runs locally. |
-| [`skills/report-artifact`](skills/report-artifact/SKILL.md) | Tells Claude when a completed create, update, send, publish or deliver is worth reporting, and how to report it. |
+| [`plugins/sabia/.mcp.json`](plugins/sabia/.mcp.json) | Bundles Sabia's hosted MCP server as `sabia-artifacts`. It is HTTP with OAuth, and nothing runs locally. |
+| [`plugins/sabia/skills/report-artifact`](plugins/sabia/skills/report-artifact/SKILL.md) | Tells Claude when a completed create, update, send, publish or deliver is worth reporting, and how to report it. |
 | [`cowork-cloud/`](cowork-cloud/README.md) | A separate, opt-in plugin for Cowork in the cloud (below). It is not part of `sabia`. |
 | [`scripts/cowork-hook-matcher.mjs`](scripts/cowork-hook-matcher.mjs) | A maintainer tool, never run by the plugin: builds the `sabia-cowork-cloud` hook's matcher from `contracts/connector-hook/cowork-mutations.json`; `--write` updates `cowork-cloud/hooks/hooks.json`. |
 
@@ -182,10 +182,14 @@ so it waits for this release, not the other way round:
    The dashboard's `docs/engineering/hosted-claude-artifact-reporting.md` lists
    what to check first.
 
-Never point `.mcp.json` (or, on the `full` branch, `DEFAULT_BASE_URL`) back at app2. Moving a plugin
+Never point `plugins/sabia/.mcp.json` (or, on the `full` branch, `DEFAULT_BASE_URL`) back at app2. Moving a plugin
 server's URL makes every user sign in again.
 
-To release, raise the version in `.claude-plugin/plugin.json` and
+The listed plugin is the `plugins/sabia` folder, and that folder is what Claude's plugin
+directory reads. Keep only Markdown, JSON and the icon in it: the directory refuses
+scripts, tests and package files from organizations it has not verified.
+
+To release, raise the version in `plugins/sabia/.claude-plugin/plugin.json` and
 `package.json`, then tag `vX.Y.Z`. The release workflow runs the checks and
 attaches `sabia-claude-plugin.tar.gz`. Claude Code only installs an update when
 the plugin's version changes. The Claude Desktop extension and the Cowork helper

@@ -1,7 +1,7 @@
 {
   "name": "sabia",
   "displayName": "Sabia",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Sabia for Claude Code: report the work Claude Code finishes to your team's Sabia workspace, through Sabia's hosted connector. No hooks and no local scripts.",
   "author": {
     "name": "Sabia Partners",

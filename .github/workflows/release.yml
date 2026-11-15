@@ -17,7 +17,7 @@ jobs:
           node-version: 22
       - run: pnpm install --frozen-lockfile
       - run: pnpm check && pnpm test
-      - run: tar -czf sabia-claude-plugin.tar.gz .claude-plugin .mcp.json skills scripts contracts icon.png README.md SETUP.md SECURITY.md LICENSE CHANGELOG.md
+      - run: tar -czf sabia-claude-plugin.tar.gz -C plugins/sabia .
       - run: gh release create "$GITHUB_REF_NAME" sabia-claude-plugin.tar.gz --verify-tag --generate-notes
         env:
           GH_TOKEN: ${{ github.token }}

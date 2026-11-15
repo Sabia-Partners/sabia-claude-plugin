@@ -84,7 +84,7 @@ describe('reporting consistency (authored traces, no host activation claims)', (
 
 describe('reporting instruction contract (static only)', () => {
   it('loads a planning trigger and preserves evidence, delegation and final reconciliation instructions', async () => {
-    const skill = (await readFile('skills/report-artifact/SKILL.md', 'utf8')).replace(/\s+/g, ' ');
+    const skill = (await readFile('plugins/sabia/skills/report-artifact/SKILL.md', 'utf8')).replace(/\s+/g, ' ');
     assert(skill.includes('description: Use when planning or completing durable work'));
     for (const clause of ['do not guarantee implicit activation', 'owns reporting by default',
       'Immediately after each successful qualifying operation', 'Unknown accounts remain unknown',
