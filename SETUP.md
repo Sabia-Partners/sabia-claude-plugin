@@ -6,8 +6,8 @@ workspace you can sign in to. The two connections below are independent. Set up 
 ## 1. Install
 
 ```text
-/plugin marketplace add Sabia-Partners/sabia-claude-plugin
-/plugin install sabia@sabia
+/plugin marketplace add Sabia-Partners/sabia-claude-plugin#full
+/plugin install sabia@sabia-full
 ```
 
 ## 2. Connect native usage

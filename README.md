@@ -41,7 +41,7 @@ if your team does not have one yet.
 
 Before 0.6.0 this plugin was called `sabia-claude-code-otel`. The marketplace
 moves an existing install to the new name; if yours still shows the old one,
-uninstall it and install `sabia@sabia`. Your native usage connection is kept,
+uninstall it and install `sabia@sabia-full`. Your native usage connection is kept,
 because it lives in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`
 rather than in the plugin. Output Reporting needs one new sign-in through `/mcp`.
 
@@ -183,7 +183,7 @@ set, and in `~/.claude` otherwise.
    restores whatever the managed variables held before.
 2. `/mcp` → `plugin:sabia:sabia-artifacts` → *Clear authentication* disconnects reporting on
    this machine. Revoke it for good in Sabia → Settings → AI Tools → Manage.
-3. `/plugin uninstall sabia@sabia`.
+3. `/plugin uninstall sabia@sabia-full`.
 
 Records Sabia already accepted stay in your workspace.
 
