@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.1
+
+- **The listed plugin moves to `plugins/sabia`.** Claude's plugin directory refused 0.9.0 because the repository root also held tests, a maintainer script, `package.json` and the separate `sabia-cowork-cloud` plugin, which it accepts only from verified organizations. The directory now reads `plugins/sabia` alone: the connector, the `report-artifact` skill, the icon, a readme and the license. Nothing changes for people who installed `sabia@sabia`: the marketplace points at the new folder, and the plugin is the same.
+- The release archive now holds just the listed plugin.
+
 ## 0.9.0
 
 - **No hooks, no local scripts.** `sabia@sabia` is now the Sabia connector and the `report-artifact` skill only, so Claude's plugin directory can list it: the directory accepts hooks only from verified organizations, and refused 0.8.1 for them. Removed: the session-start native usage sync, the report binding, the connector hook, the `connect-sabia` skill, and the scripts and contracts behind them.

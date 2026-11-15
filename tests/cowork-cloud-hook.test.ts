@@ -28,7 +28,7 @@ describe("cloud Cowork connector hook", () => {
     expect(plugin.description).toMatch(/full input and reply/);
     const marketplace = await json(".claude-plugin/marketplace.json");
     expect(marketplace.plugins.map((entry: { name: string; source: string }) => [entry.name, entry.source]))
-      .toEqual([["sabia", "./"], ["sabia-cowork-cloud", "./cowork-cloud"]]);
+      .toEqual([["sabia", "./plugins/sabia"], ["sabia-cowork-cloud", "./cowork-cloud"]]);
     const readme = await readFile(join(root, "cowork-cloud/README.md"), "utf8");
     expect(readme.split(/\s+/).length).toBeGreaterThan(40);
   });

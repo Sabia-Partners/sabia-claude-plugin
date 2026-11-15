@@ -5,7 +5,10 @@ import { describe, expect, it } from "vitest";
 // The Claude Code plugin's reporting path is hosted MCP plus a skill; the
 // manifest is the contract Claude Code loads, so it is pinned here rather than
 // trusted. Native usage and the hooks live in the complete plugin on the full branch.
-const root = process.cwd();
+// The listed plugin lives in plugins/sabia: the directory reads that folder
+// alone, so the tests, scripts and cowork-cloud plugin at the root stay out of it.
+const repo = process.cwd();
+const root = join(repo, "plugins/sabia");
 const json = async (path: string) => JSON.parse(await readFile(join(root, path), "utf8"));
 const listingUrls = ["documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"] as const;
 
@@ -48,12 +51,32 @@ describe("Sabia for Claude Code plugin manifest", () => {
     // Claude's plugin directory accepts hooks only from verified organizations.
     // The complete plugin, with its hooks and scripts, lives on the full branch.
     await expect(readFile(join(root, "hooks/hooks.json"), "utf8")).rejects.toThrow();
-    const scripts = await readdir(join(root, "scripts"));
-    // The only script left is a maintainer tool for the separate cowork-cloud
-    // plugin's matcher; nothing in this plugin runs it.
-    expect(scripts).toEqual(["cowork-hook-matcher.mjs"]);
+    await expect(readdir(join(root, "scripts"))).rejects.toThrow();
     const skills = await readdir(join(root, "skills"));
     expect(skills).toEqual(["report-artifact"]);
+  });
+
+  it("holds only the file types the directory accepts from unverified organizations", async () => {
+    // Markdown, text, JSON and images; no #! line, no package manager files,
+    // no second .claude-plugin folder. Anything else refuses the whole version.
+    const files = (await readdir(root, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => join(entry.parentPath, entry.name).slice(root.length + 1))
+      .sort();
+    expect(files).toEqual([
+      ".claude-plugin/plugin.json",
+      ".mcp.json",
+      "LICENSE",
+      "README.md",
+      "icon.png",
+      "skills/report-artifact/SKILL.md",
+    ]);
+    for (const file of files.filter((name) => name !== "icon.png")) {
+      const text = await readFile(join(root, file), "utf8");
+      expect(text.startsWith("#!"), file).toBe(false);
+      expect(text.includes("\u0000"), file).toBe(false);
+    }
+    expect(await readFile(join(root, "LICENSE"), "utf8")).toBe(await readFile(join(repo, "LICENSE"), "utf8"));
   });
 
   it("ships the reporting skill against the scoped tool names", async () => {
