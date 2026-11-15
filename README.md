@@ -26,8 +26,8 @@ that produced it.
 ## Quick start
 
 ```text
-/plugin marketplace add Sabia-Partners/sabia-claude-plugin
-/plugin install sabia@sabia
+/plugin marketplace add Sabia-Partners/sabia-claude-plugin#full
+/plugin install sabia@sabia-full
 ```
 
 Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →

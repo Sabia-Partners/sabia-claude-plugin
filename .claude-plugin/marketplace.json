@@ -1,11 +1,11 @@
 {
-  "name": "sabia",
+  "name": "sabia-full",
   "owner": {
     "name": "Sabia Partners",
     "email": "hello@sabiapartners.ca"
   },
   "metadata": {
-    "description": "Sabia for Claude Code: completed-work reporting and native usage"
+    "description": "Sabia for Claude Code, complete: completed-work reporting, native token usage, session binding and connector capture through hooks"
   },
   "renames": {
     "sabia-claude-code-otel": "sabia"
