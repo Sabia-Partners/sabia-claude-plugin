@@ -186,7 +186,7 @@ Never point `plugins/sabia/.mcp.json` (or, on the `full` branch, `DEFAULT_BASE_U
 server's URL makes every user sign in again.
 
 The listed plugin is the `plugins/sabia` folder, and that folder is what Claude's plugin
-directory reads. Keep only Markdown, JSON and the icon in it: the directory refuses
+directory reads. Keep only Markdown, JSON, the license and the icon in it: the directory refuses
 scripts, tests and package files from organizations it has not verified.
 
 To release, raise the version in `plugins/sabia/.claude-plugin/plugin.json` and
