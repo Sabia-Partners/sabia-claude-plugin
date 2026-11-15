@@ -79,9 +79,9 @@ places, and either works:
 Use whichever is connected, and the same one for every call about one report.
 Do not use `report_artifact`: Sabia accepts new reports only through
 `report_artifact_v3`. This skill works through those hosted tools only:
-no shell, no Node process, no credential file, and nothing in the native OTel
-configuration that `connect-sabia` manages. Native usage collection continues
-independently through that skill and is never a substitute for a report.
+no shell, no Node process, no credential file, and nothing in Claude Code's
+native OTel configuration. Native usage, where a team collects it, is separate
+and is never a substitute for a report.
 
 If the tools are missing or answer with an authorization error, the user has
 not connected Output Reporting yet. On their computer, tell them to run `/mcp`,

@@ -1,27 +1,19 @@
 # Sabia for Claude Code
 
-Output Reporting records completed actions on durable work, such as documents,
-pull requests and presentations. Creating a document and later materially editing
-it produces two Outputs linked to one Artifact. A generated response or trace
-alone does not qualify.
-
-**See what Claude Code actually shipped, and what it cost to ship it.**
+**Report the work Claude Code finishes to your team's Sabia workspace.**
 
 [![Plugin checks](https://github.com/Sabia-Partners/sabia-claude-plugin/actions/workflows/ci.yml/badge.svg)](https://github.com/Sabia-Partners/sabia-claude-plugin/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Node 22+](https://img.shields.io/badge/node-%E2%89%A522-339933)
 
 Sabia is AI Work Intelligence for teams. This plugin connects Claude Code to
-your team's Sabia workspace in two ways, and you approve each one separately:
+your team's Sabia workspace through **Output Reporting**: when Claude Code
+opens a pull request, files an issue or revises a document, it records that
+work in Sabia. Creating a document and later materially editing it produces two
+Outputs linked to one Artifact. A generated response or trace alone does not
+qualify.
 
-- **Output Reporting.** When Claude Code opens a pull request, files an
-  issue or revises a document, it records that work in Sabia.
-- **Native usage.** Claude Code's built-in OpenTelemetry token counts go to
-  Sabia, including Max and Pro subscription usage that never appears in
-  Anthropic's API cost reports.
-
-With both connected, Sabia links each piece of work to the session and tokens
-that produced it.
+This plugin is the Sabia connector and one skill. It ships **no hooks and no
+local scripts**: nothing runs on your machine and nothing is read from it.
 
 ## Quick start
 
@@ -30,162 +22,62 @@ that produced it.
 /plugin install sabia@sabia
 ```
 
-Then ask Claude to **"connect Sabia"** for native usage, and run `/mcp` →
-`plugin:sabia:sabia-artifacts` to connect Output Reporting. [SETUP.md](SETUP.md) walks through both, step by step.
-Cloud sessions on claude.ai/code need their own setup: see [Cloud sessions](#cloud-sessions).
-Needs Claude Code 2.1.81 or later. For Claude on the web, Desktop and mobile, see
+Then run `/mcp`, choose `plugin:sabia:sabia-artifacts`, sign in to Sabia and
+approve metadata sharing for your organization. Needs Claude Code 2.1.81 or
+later. For Claude on the web, Desktop and mobile, see
 [Connect Claude to Sabia](https://app.sabia.work/help/claude).
 
 You need a Sabia workspace. Talk to [Sabia Partners](https://sabiapartners.ca/contact)
 if your team does not have one yet.
 
-Before 0.6.0 this plugin was called `sabia-claude-code-otel`. The marketplace
-moves an existing install to the new name; if yours still shows the old one,
-uninstall it and install `sabia@sabia`. Your native usage connection is kept,
-because it lives in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`
-rather than in the plugin. Output Reporting needs one new sign-in through `/mcp`.
+## The complete plugin: token usage and automatic capture
 
-From 0.8.0 the plugin uses Sabia's current address, `app.sabia.work`, instead
-of `app2.sabiapartners.ca`. After updating, run `/mcp` →
-`plugin:sabia:sabia-artifacts` and sign in once more: a sign-in made on the old
-address is not accepted on the new one. The old connection stays in Sabia until
-you revoke it under Settings → Members → Details → Output Reporting. Native
-usage connected before 0.8.0 keeps sending to `app2.sabiapartners.ca`, which
-Sabia still serves; ask Claude to connect Sabia again to move it. If you added
-the Sabia connector in Claude with the old address, remove it there and add it
-again with `https://app.sabia.work/api/mcp/artifacts`, so Claude Code lists one
-Sabia server instead of two. On your computer Claude Code then uses the plugin's
-server and hides the connector, so if you reported through the connector there,
-sign in to the plugin's server once; `/mcp` shows how to use the connector
-instead.
+A complete version of this plugin also sends Claude Code's own token counts to
+Sabia, links each report to the session and tokens behind it, and records work
+Claude Code does through other connectors, such as a Google Doc it creates. It
+does that with hooks and local scripts, which Claude's plugin directory accepts
+only from verified organizations, so it lives on this repository's
+[`full` branch](https://github.com/Sabia-Partners/sabia-claude-plugin/tree/full#readme)
+in its own marketplace:
+
+```text
+/plugin uninstall sabia@sabia
+/plugin marketplace add Sabia-Partners/sabia-claude-plugin#full
+/plugin install sabia@sabia-full
+```
+
+Then ask Claude to **"connect Sabia"** for native usage, as its README
+describes. Both versions are named `sabia`, so install only one of them.
+
+Up to 0.8.1 the complete plugin was `sabia@sabia`. From 0.9.0 that name is this
+hook-free plugin, and updating removes the native usage sync, the report
+binding and the connector hook. Install `sabia@sabia-full` to keep them. Your
+native usage connection itself is kept either way: it lives in
+`~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`, not in the
+plugin.
 
 ## What leaves your machine
 
-Nothing is sent until you connect. After that, only what the table shows for
-your connection is sent, and only to Sabia (`app.sabia.work`, or
-`app2.sabiapartners.ca` for native usage connected before 0.8.0). This
-plugin never turns on prompt text or assistant responses, and never reads your
-Claude chat history, memory or transcripts. The
-[privacy notice](https://app.sabia.work/privacy/claude-code) covers what
-Sabia keeps and for how long.
+Nothing is sent until you sign in through `/mcp`. After that, Claude sends
+Sabia what it reports through the connector's tools, and only that.
 
-| Connection | Sent to Sabia | Never sent |
-| --- | --- | --- |
-| **Output Reporting** | For each completed piece of work: an action, a short title, the artifact type, its provider reference and identifiers, and available evidence references. | Document bodies, prompts, transcripts, file contents. |
-| **Native usage** | Token counts from Claude Code's OpenTelemetry **metrics** export, plus the tool-output grant below unless you connect with `--no-tool-output`. | Prompt text, assistant responses, raw API bodies. |
-| **Report binding** (both connected) | The report's `tool_use_id` and a SHA-256 of the session id, hashed on this machine. | The raw session id, transcript, tool input, usage values. |
+| Sent to Sabia | Never sent |
+| --- | --- |
+| For each completed piece of work: an action, a short title, the artifact type, its provider reference and identifiers, and available evidence references. | Document bodies, prompts, transcripts, file contents, anything on your machine. |
 
 Titles and references can still contain sensitive information, so review what
-Claude reports the same way you would review a commit message.
-
-### Tool-output grant
-
-One more grant widens native usage. `connect` asks for it unless you pass
-`--no-tool-output`. It needs an owner or administrator of your Sabia
-organization to approve it in the browser, and is recorded on the connection's
-key rather than on this machine. Content is exported only once Sabia confirms
-the grant: when it is withheld or cannot be read, `connect` leaves the log and
-trace export off, and the session-start sync turns it on once Sabia confirms
-it.
-
-| Grant | Adds | Still never sent |
-| --- | --- | --- |
-| **Tool output** (default; `--no-tool-output` to opt out) | Tool result bodies and the command lines that produced them, so work like `gh pr create` shows on Sabia's Output page. From Claude Code 2.1.283 this includes the results of connector (MCP) tools, WebFetch and WebSearch, so document text, email bodies and web pages a tool returned can be sent. Claude Code's tool events from its log export, with each tool's arguments, MCP server and tool names, and skill names, so a connector update and the skills a session used can be identified. Claude Code redacts prompt text in those events. Sabia keeps a reduced extract per tool and drops file-tool bodies. For a successful connector action that creates or changes something in a supported Work Source (Google Drive and GitHub, plus the sources Sabia lists in its connector hook contract), a local hook also sends the identifiers from its reply: file, pull request or record ids, keys, names and links. | Prompt text, assistant responses, raw API bodies. |
-
-Everyone in your Sabia organization can read what this grant captures.
-
-> [!IMPORTANT]
-> The grant is managed in Sabia, and an owner or administrator can change
-> it later in **Settings → Usage connections**. Narrowing
-> applies at the device's next session start without asking. If you connected
-> without `--no-tool-output` and tool output was not granted then, you already
-> asked for it, so the session-start sync turns it on once an owner or
-> administrator grants it. **Otherwise, widening never applies without you**: the
-> plugin shows the request at each session start, and nothing more is exported
-> until you approve it on this device (ask Claude, or run `approve`). To stop
-> sharing, run `disconnect` or remove the device in Sabia.
+Claude reports the same way you would review a commit message. The
+[privacy notice](https://app.sabia.work/privacy/claude-code) covers what Sabia
+keeps and for how long.
 
 ## How it works
-
-```mermaid
-flowchart LR
-  subgraph Device["Your machine"]
-    CC["Claude Code"]
-    Skill["report-artifact skill"]
-    Hook["PostToolUse hook"]
-    Sync["SessionStart sync"]
-  end
-  subgraph Sabia["Sabia"]
-    MCP["Hosted MCP server<br/>/api/mcp/artifacts"]
-    OTLP["OTLP ingest<br/>/api/v1/telemetry/otlp"]
-    Bind["Invocation binding"]
-  end
-  CC -- "OpenTelemetry metrics" --> OTLP
-  Skill -- "report_artifact_v3 (OAuth)" --> MCP
-  MCP -- "receipt" --> Hook
-  Hook -- "tool_use_id + hashed session" --> Bind
-  Sync -- "read grants" --> OTLP
-```
 
 | Piece | What it does |
 | --- | --- |
 | [`.mcp.json`](.mcp.json) | Bundles Sabia's hosted MCP server as `sabia-artifacts`. It is HTTP with OAuth, and nothing runs locally. |
 | [`skills/report-artifact`](skills/report-artifact/SKILL.md) | Tells Claude when a completed create, update, send, publish or deliver is worth reporting, and how to report it. |
-| [`skills/connect-sabia`](skills/connect-sabia/SKILL.md) | Connects, checks, rotates and disconnects native usage. |
-| [`scripts/sabia.mjs`](scripts/sabia.mjs) | Writes and removes the managed OpenTelemetry block in `settings.json`. Unrelated keys are preserved. |
-| [`scripts/sabia-report-binding.mjs`](scripts/sabia-report-binding.mjs) | Links an accepted report to the tool call and session that made it. |
-| [`scripts/sabia-connector-hook.mjs`](scripts/sabia-connector-hook.mjs) | Under the tool-output grant only: after a successful connector mutation, sends the identifiers in its reply. Claude Code before 2.1.283 exports connector arguments but never their results, so without it a Doc created through the Drive connector cannot be identified on those clients. Which operations count and which identifiers it keeps come from Sabia's connector hook contract, fetched with the native usage key, cached for 24 hours and replaced by the last good copy, then the bundled v1 contract, when Sabia cannot be reached. Reads, other connectors and failed calls send nothing; there is no retry spool. |
-| [`hooks/hooks.json`](hooks/hooks.json) | Runs `sync` and the binding retry at session start, the binding after a report, and the connector hook after MCP tools. |
-| [`scripts/cowork-hook-matcher.mjs`](scripts/cowork-hook-matcher.mjs) | Builds the matcher of the opt-in `sabia-cowork-cloud` plugin's hook from `contracts/connector-hook/cowork-mutations.json`; `--write` updates `cowork-cloud/hooks/hooks.json`. |
-
-### Everything this plugin runs, sends and fetches
-
-Every request goes to Sabia. Output Reporting uses `app.sabia.work`. Native
-usage, the report binding and the connector hook use the host native usage was
-connected to: `app.sabia.work` by default, `app2.sabiapartners.ca` for a device
-connected before 0.8.0, or the `--base-url` you connected with. Nothing else is
-contacted, and no code or instructions are downloaded.
-
-| When | Runs | Network | Writes |
-| --- | --- | --- | --- |
-| You ask to connect (`connect-sabia` skill) | `scripts/sabia.mjs connect`, which opens your browser with `open`, `xdg-open` or `start` | `POST /api/v1/telemetry/connect`, then polls `GET /api/v1/telemetry/connect/<id>` until you approve | The `env` block in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`, mode 0600 |
-| Every session start | `scripts/sabia.mjs sync --quiet` and `scripts/sabia-report-binding.mjs` | `GET /api/v1/telemetry/connection` (the grants for this key); retries of queued report bindings | The settings and `~/.claude/sabia-otel-state.json` when a grant narrowed or a wider one is waiting; the report-binding queue as items are sent or expire |
-| Claude Code itself, once connected | Nothing extra | Token metrics to `/api/v1/telemetry/otlp`; under the tool-output grant, log records to the same endpoint and traces to `/api/v1/telemetry/traces` | Nothing |
-| After `report_artifact_v3` | `scripts/sabia-report-binding.mjs` | `POST /api/v1/artifact-reporting/claude-code-invocation` | A retry queue in the plugin's data directory |
-| After any MCP tool call | `scripts/sabia-connector-hook.mjs`, which exits at once unless the tool-output grant is on and the call was a successful connector create or update | `GET /api/v1/telemetry/claude-code/hooks/contract` (a JSON allowlist of operations, at most daily), `POST /api/v1/telemetry/claude-code/hooks` | The contract cache in the plugin's data directory, and a retry-pause marker in the system temporary directory |
-| You approve a wider grant (`approve`) | `scripts/sabia.mjs approve` | `GET /api/v1/telemetry/connection` | The settings and `~/.claude/sabia-otel-state.json` |
-| You run `disconnect` | `scripts/sabia.mjs disconnect` | `DELETE /api/v1/telemetry/connection` | Restores the settings you had before |
-| You use Output Reporting | Nothing local | The hosted MCP server `/api/mcp/artifacts`, signed in with OAuth through `/mcp` | Claude Code's own OAuth token store |
-
-A report records that work was done. It never performs the work, and a
-reporting failure never means the original operation failed.
-
-## Commands
-
-The `connect-sabia` skill runs these for you. You can also run them from the
-plugin directory:
-
-```text
-node scripts/sabia.mjs connect      # browser approval, writes the exporter settings
-node scripts/sabia.mjs status       # organization, endpoint and active grants
-node scripts/sabia.mjs sync         # apply narrowed grants, show requested widenings
-node scripts/sabia.mjs approve      # accept a wider grant your administrator requested
-node scripts/sabia.mjs disconnect   # revoke the key and restore previous settings
-```
-
-Claude Code reads its environment when a session starts, so **start a new
-session** after connecting. Settings live in `$CLAUDE_CONFIG_DIR` when that is
-set, and in `~/.claude` otherwise.
-
-## Uninstall
-
-1. `node scripts/sabia.mjs disconnect` revokes the native usage key and
-   restores whatever the managed variables held before.
-2. `/mcp` → `plugin:sabia:sabia-artifacts` → *Clear authentication* disconnects reporting on
-   this machine. Revoke it for good in Sabia → Settings → AI Tools → Manage.
-3. `/plugin uninstall sabia@sabia`.
-
-Records Sabia already accepted stay in your workspace.
+| [`cowork-cloud/`](cowork-cloud/README.md) | A separate, opt-in plugin for Cowork in the cloud (below). It is not part of `sabia`. |
+| [`scripts/cowork-hook-matcher.mjs`](scripts/cowork-hook-matcher.mjs) | A maintainer tool, never run by the plugin: builds the `sabia-cowork-cloud` hook's matcher from `contracts/connector-hook/cowork-mutations.json`; `--write` updates `cowork-cloud/hooks/hooks.json`. |
 
 ## Cloud sessions
 
@@ -204,46 +96,16 @@ sessions get it already signed in, and it reports their work as Claude Code;
 Claude chat, Cowork, Desktop and mobile. If you connected it before it covered
 Claude Code, disconnect it there and connect again.
 
-**Native usage.** Cloud sessions send token counts to Sabia only when the
-exporter variables are set on the cloud environment itself. This works on Pro,
-Max, Team and Enterprise. `connect` refuses to run in a cloud session, because
-nothing it writes there would be read again.
-
-1. In Sabia, go to **Settings → AI Tools**, select **Connect a tool**,
-   then **Set up** on Claude Code, and select **Get cloud session values**. Sabia issues a key for
-   your cloud sessions only and shows the variables once. Issuing again
-   revokes the previous key.
-2. At [claude.ai/code](https://claude.ai/code), open the environment selector
-   under the message box. Edit one of your **Personal** environments, or add
-   one.
-3. Paste the variables into **Environment variables**.
-4. Set **Network access** to **Custom** and add the Sabia host shown with the
-   variables, for example `app.sabia.work`. Check **Also include
-   default list of common package managers** if your sessions install
-   packages. An environment set up with `app2.sabiapartners.ca` keeps
-   working; get new values to move it.
-5. Start a new cloud session in that environment. Its usage appears under
-   Claude Code in Sabia after a few minutes.
-
-This sends the same metrics-only token counts as the default native usage
-connection. Prompts, responses, tool arguments and file contents are not sent.
-The tool-output grant cannot be turned on for a cloud key: cloud sessions send
-no traces, so it would stop Sabia counting their usage. Reports from cloud
-sessions are not linked to their token usage, because the binding hook needs
-the key and cloud sessions keep it from hooks.
-
-Keep the key in a **personal** environment. Anyone who can use an environment
-can read its variables, and Sabia credits every session in it to the person
-who issued the key. Never put it in an environment shared with your
-organization. Claude Code does not pass `OTEL_*` variables to the commands it
-runs, so code in the session cannot read the key.
+Native usage from cloud sessions is set up from Sabia, not from a plugin; the
+[complete plugin's README](https://github.com/Sabia-Partners/sabia-claude-plugin/tree/full#cloud-sessions)
+walks through it.
 
 ### Cowork in the cloud
 
 Cowork sessions also run on Anthropic's machines (on Pro and Max since
 October 2026). Unlike Claude Code cloud sessions they load the plugins on your
-Claude account, with their hooks, but there is no `settings.json` key there,
-so this plugin's connector hook sends nothing. A separate, opt-in plugin,
+Claude account, with their hooks. The complete plugin's connector hook needs a
+`settings.json` key, which Cowork in the cloud doesn't have, so it sends nothing there. A separate, opt-in plugin,
 **Sabia Cowork cloud capture** ([`cowork-cloud/`](cowork-cloud/README.md),
 `sabia-cowork-cloud` in this marketplace), reports the same connector writes
 through the Sabia connector you added in Claude, which carries your sign-in:
@@ -283,14 +145,6 @@ turn telemetry on. A server-managed settings `env` block would also reach
 every member's own computer and replace their personal keys, so Sabia does
 not use it.
 
-## Prompt text
-
-This plugin never turns on prompt text. Claude Code includes it in its log
-records only when `OTEL_LOG_USER_PROMPTS=1` is set, which the plugin never
-writes, changes or removes. If your Sabia organization grants raw capture and
-you choose to set it yourself, Sabia keeps the prompt text that arrives;
-without that grant, Sabia drops it.
-
 ## Development
 
 ```text
@@ -299,38 +153,13 @@ pnpm check
 pnpm test
 ```
 
-The tests cover connect, sync and disconnect against a local handoff server,
-the plugin manifest, the report-binding hook and the connector
-hook. New reports follow the v3 contract that `get_reporting_contract` returns; the
-earlier v2 contract, kept for receipt recovery, is pinned in [`contracts/v2`](contracts/v2/README.md);
-the connector hook's vendored contract and its identity-path parity cases, generated
-from the dashboard's own projector, are in [`contracts/connector-hook`](contracts/connector-hook).
-`identity-paths-v3.json` is a byte copy of the dashboard's
-`tests/fixtures/claude-code-identity-paths-v3.json`; when the dashboard regenerates
-it, copy it again rather than editing it here.
-
-### Changing the connector hook contract
-
-Clients cache the contract for 24 hours, and keep using the last good copy for as
-long as Sabia cannot be reached, so the server never knows which contract a hook
-is applying. Any change to `identityPaths` is therefore expand, deploy, contract,
-the same rule as a database migration:
-
-1. **Expand.** Add the new path, `as` name or operation beside the old one, and
-   have the module read both.
-2. **Deploy**, and wait at least one release (well past the 24-hour cache) so every
-   connected hook has fetched the expanded contract.
-3. **Contract.** Only then remove or rename the old declaration, or deactivate the
-   module that declared it.
-
-Never rename or remove an `as`, change its `kind`, or deactivate a module's paths
-in a single release: a hook still on the old contract would send names the server
-no longer declares, and the server rejects that whole subtree. The contract's own
-shape is pinned on both sides (the dashboard's
-`tests/unit/claude-code-identity-path-parity.test.ts` and this repository's
-`parseConnectorContract`); this hook rejects a contract with any key, kind or cap it
-does not know and falls back to its last good copy, so a new field needs a plugin
-release that accepts it before the server may serve it.
+The tests pin the plugin manifest, the reporting skill, the reporting contract
+and the Cowork cloud capture hook. New reports follow the v3 contract that
+`get_reporting_contract` returns; the earlier v2 contract, kept for receipt
+recovery, is pinned in [`contracts/v2`](contracts/v2/README.md). The native usage
+scripts, the report binding, the connector hook and their contracts live on the
+[`full` branch](https://github.com/Sabia-Partners/sabia-claude-plugin/tree/full).
+Changes to them go there.
 
 ### Retiring `app2.sabiapartners.ca`
 
@@ -350,7 +179,7 @@ so it waits for this release, not the other way round:
    The dashboard's `docs/engineering/hosted-claude-artifact-reporting.md` lists
    what to check first.
 
-Never point `.mcp.json` or `DEFAULT_BASE_URL` back at app2. Moving a plugin
+Never point `.mcp.json` (or, on the `full` branch, `DEFAULT_BASE_URL`) back at app2. Moving a plugin
 server's URL makes every user sign in again.
 
 To release, raise the version in `.claude-plugin/plugin.json` and

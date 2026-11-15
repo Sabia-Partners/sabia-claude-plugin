@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0
+
+- **No hooks, no local scripts.** `sabia@sabia` is now the Sabia connector and the `report-artifact` skill only, so Claude's plugin directory can list it: the directory accepts hooks only from verified organizations, and refused 0.8.1 for them. Removed: the session-start native usage sync, the report binding, the connector hook, the `connect-sabia` skill, and the scripts and contracts behind them.
+- **The complete plugin moves to the `full` branch**, in its own marketplace: `/plugin marketplace add Sabia-Partners/sabia-claude-plugin#full`, then `/plugin install sabia@sabia-full`. It is 0.8.1 unchanged and keeps every hook. Install one version or the other: both are named `sabia`. A native usage connection is kept either way, because it lives in `~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`.
+- The hooks come back to `sabia@sabia` once Sabia is a verified organization.
+
 ## 0.8.1
 
 - **Work in any system counts.** The `report-artifact` skill asks the contract about an explicit creation or update in a system, type or action Sabia does not list, with `source_system` `other` for an unlisted system and lowercase slugs for the type and action. It follows the contract's `fallback_guidance`: a new action on a listed type, such as a pull request merge, is reported on that Artifact; anything else is sent with `artifact` null and an `artifact_hint` taken only from the tool's result, and is recorded as an Unresolved Output. Reads, searches, previews and downloads are still not reported. The skill no longer says Slack messages cannot be reported: the contract decides what Sabia accepts. `update_pending` means Sabia is mid-update: ask again later and keep the `event_id`. Gmail sends and Apollo records are listed too. The systems the skill names are examples, not the whole list; a `gh` call with nothing identifiable is no longer ruled out, only never given a guessed identity. Pairs with dashboard-langfuse#675.
