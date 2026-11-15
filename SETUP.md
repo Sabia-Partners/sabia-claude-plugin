@@ -38,13 +38,15 @@ The complete version also sends Claude Code's token counts to Sabia, links each
 report to its session, and records work done through other connectors. It uses
 hooks and local scripts, so it lives on the
 [`full` branch](https://github.com/Sabia-Partners/sabia-claude-plugin/tree/full)
-in its own marketplace. Install one version or the other, not both:
+in its own marketplace:
 
 ```text
-/plugin uninstall sabia@sabia
 /plugin marketplace add Sabia-Partners/sabia-claude-plugin#full
 /plugin install sabia@sabia-full
 ```
+
+If you already have `sabia@sabia`, run `/plugin uninstall sabia@sabia` first:
+both are named `sabia`, and Claude Code would install them side by side.
 
 Its own [SETUP.md](https://github.com/Sabia-Partners/sabia-claude-plugin/blob/full/SETUP.md)
 covers connecting native usage.
@@ -57,6 +59,6 @@ covers connecting native usage.
 | Reporting tools are missing or unauthorized | Repeat step 2. In a cloud session, connect the Sabia connector in Claude instead (step 3). |
 | `/mcp` lists two Sabia servers | The Sabia connector added in Claude has the old address. Remove it in Claude's connector settings and add it again with `https://app.sabia.work/api/mcp/artifacts`. |
 | The Sabia connector answers `DISALLOWED_SOURCE` from Claude Code | It was connected before it covered Claude Code. Disconnect it in Claude's connector settings and connect again. |
-| Token usage stopped after updating to 0.9.0 | 0.9.0 removed the native usage sync from `sabia@sabia`. Install the complete plugin (above). Your connection itself is kept. |
+| After updating to 0.9.0, grant changes don't apply or reports aren't linked to sessions | 0.9.0 removed the grant sync, report binding and connector capture from `sabia@sabia`. Token counts keep exporting. Install the complete plugin (above) to get the rest back. |
 
 Questions: [hello@sabiapartners.ca](mailto:hello@sabiapartners.ca) or [sabiapartners.ca/contact](https://sabiapartners.ca/contact).

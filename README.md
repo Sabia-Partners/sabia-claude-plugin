@@ -41,20 +41,21 @@ only from verified organizations, so it lives on this repository's
 in its own marketplace:
 
 ```text
-/plugin uninstall sabia@sabia
 /plugin marketplace add Sabia-Partners/sabia-claude-plugin#full
 /plugin install sabia@sabia-full
 ```
 
+If you already have `sabia@sabia`, run `/plugin uninstall sabia@sabia` first:
+both are named `sabia`, and Claude Code would install them side by side.
+
 Then ask Claude to **"connect Sabia"** for native usage, as its README
-describes. Both versions are named `sabia`, so install only one of them.
+describes.
 
 Up to 0.8.1 the complete plugin was `sabia@sabia`. From 0.9.0 that name is this
-hook-free plugin, and updating removes the native usage sync, the report
-binding and the connector hook. Install `sabia@sabia-full` to keep them. Your
-native usage connection itself is kept either way: it lives in
-`~/.claude/settings.json` and `~/.claude/sabia-otel-state.json`, not in the
-plugin.
+hook-free plugin. Updating keeps exporting token counts, because the exporter
+settings stay in `~/.claude/settings.json`, but grant changes no longer sync,
+reports are no longer linked to their sessions, and connector work is no
+longer captured. Install `sabia@sabia-full` to keep those.
 
 ## What leaves your machine
 
@@ -83,7 +84,7 @@ keeps and for how long.
 
 Cloud sessions run on Anthropic's machines: claude.ai/code, `claude --cloud`,
 the Desktop app's Cloud option and routines. They load neither the plugins
-installed on your computer nor the `settings.json` this plugin writes, so
+installed on your computer nor the `settings.json` the complete plugin writes, so
 installing and connecting on your computer does not cover them. Set them up
 once, separately for each connection.
 
