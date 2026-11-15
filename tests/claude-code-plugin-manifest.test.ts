@@ -1,10 +1,10 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 // The Claude Code plugin's reporting path is hosted MCP plus a skill; the
 // manifest is the contract Claude Code loads, so it is pinned here rather than
-// trusted. Native usage stays the separate connect-sabia path.
+// trusted. Native usage and the hooks live in the complete plugin on the full branch.
 const root = process.cwd();
 const json = async (path: string) => JSON.parse(await readFile(join(root, path), "utf8"));
 const listingUrls = ["documentationUrl", "supportUrl", "privacyPolicyUrl", "termsOfServiceUrl"] as const;
@@ -44,33 +44,16 @@ describe("Sabia for Claude Code plugin manifest", () => {
     expect(server.oauth).toBeUndefined();
   });
 
-  it("keeps the native usage sync and binds reports only from the scoped report tool", async () => {
-    const hooks = await json("hooks/hooks.json");
-    expect(Object.keys(hooks.hooks).sort()).toEqual(["PostToolUse", "SessionStart"]);
-    const start = hooks.hooks.SessionStart[0].hooks.map((hook: { command: string }) => hook.command);
-    expect(start[0]).toContain("sabia.mjs\" sync --quiet");
-    expect(start[1]).toContain("sabia-report-binding.mjs");
-    const [post, connector] = hooks.hooks.PostToolUse;
-    const matcher = new RegExp(post.matcher);
-    expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact")).toBe(true);
-    expect(matcher.test("mcp__sabia-artifacts__report_artifact")).toBe(true);
-    expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact_v3")).toBe(true);
-    expect(matcher.test("mcp__sabia-artifacts__report_artifact_v3")).toBe(true);
-    // The Sabia connector added in claude.ai, as Claude Code names it on a computer.
-    expect(matcher.test("mcp__claude_ai_Sabia__report_artifact_v3")).toBe(true);
-    expect(matcher.test("mcp__claude_ai_Sabia__get_artifact_report")).toBe(false);
-    expect(matcher.test("mcp__claude_ai_Slack__report_artifact_v3")).toBe(false);
-    expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__report_artifact_v4")).toBe(false);
-    expect(matcher.test("mcp__plugin_sabia_sabia-artifacts__get_artifact_report")).toBe(false);
-    expect(matcher.test("Bash")).toBe(false);
-    expect(post.hooks).toEqual([{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/sabia-report-binding.mjs"', timeout: 8 }]);
-    // Connector mutations: every MCP tool reaches the script, which decides
-    // locally and stays silent for reads and for Sabia's own tools.
-    const connectorMatcher = new RegExp(connector.matcher);
-    expect(connectorMatcher.test("mcp__google_drive__create_file")).toBe(true);
-    expect(connectorMatcher.test("mcp__github__create_pull_request")).toBe(true);
-    expect(connectorMatcher.test("Bash")).toBe(false);
-    expect(connector.hooks).toEqual([{ type: "command", command: 'node "${CLAUDE_PLUGIN_ROOT}/scripts/sabia-connector-hook.mjs"', timeout: 10 }]);
+  it("ships no hooks and no local scripts, so the plugin directory can list it", async () => {
+    // Claude's plugin directory accepts hooks only from verified organizations.
+    // The complete plugin, with its hooks and scripts, lives on the full branch.
+    await expect(readFile(join(root, "hooks/hooks.json"), "utf8")).rejects.toThrow();
+    const scripts = await readdir(join(root, "scripts"));
+    // The only script left is a maintainer tool for the separate cowork-cloud
+    // plugin's matcher; nothing in this plugin runs it.
+    expect(scripts).toEqual(["cowork-hook-matcher.mjs"]);
+    const skills = await readdir(join(root, "skills"));
+    expect(skills).toEqual(["report-artifact"]);
   });
 
   it("ships the reporting skill against the scoped tool names", async () => {

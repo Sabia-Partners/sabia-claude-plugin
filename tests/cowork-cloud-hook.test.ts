@@ -11,8 +11,6 @@ import { COWORK_HOOK_SERVER, COWORK_HOOK_TOOL, coworkHookMatcher, coworkOperatio
 // only.
 const root = process.cwd();
 const json = async (path: string) => JSON.parse(await readFile(join(root, path), "utf8"));
-const hasMcpToolHook = (hooks: { hooks: Record<string, { hooks: { type: string }[] }[]> }) =>
-  Object.values(hooks.hooks).flat().some((group) => group.hooks.some((hook) => hook.type === "mcp_tool"));
 
 async function coworkHook() {
   const hooks = await json("cowork-cloud/hooks/hooks.json");
@@ -23,7 +21,8 @@ async function coworkHook() {
 
 describe("cloud Cowork connector hook", () => {
   it("ships in its own opt-in plugin, so the main plugin never sends a raw reply", async () => {
-    expect(hasMcpToolHook(await json("hooks/hooks.json"))).toBe(false);
+    // The main plugin ships no hooks at all, so it can never send a raw reply.
+    await expect(readFile(join(root, "hooks/hooks.json"), "utf8")).rejects.toThrow();
     const plugin = await json("cowork-cloud/.claude-plugin/plugin.json");
     expect(plugin.name).toBe("sabia-cowork-cloud");
     expect(plugin.description).toMatch(/full input and reply/);

@@ -5,7 +5,7 @@
     "email": "hello@sabiapartners.ca"
   },
   "metadata": {
-    "description": "Sabia for Claude Code: completed-work reporting and native usage"
+    "description": "Sabia for Claude Code: completed-work reporting through Sabia's hosted connector"
   },
   "renames": {
     "sabia-claude-code-otel": "sabia"
@@ -14,7 +14,7 @@
     {
       "name": "sabia",
       "source": "./",
-      "description": "Report completed work and connect Claude Code token usage to Sabia."
+      "description": "Report the work Claude Code finishes to Sabia. No hooks; for token usage and automatic capture, use the sabia-full marketplace on the full branch."
     },
     {
       "name": "sabia-cowork-cloud",
