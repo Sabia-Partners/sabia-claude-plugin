@@ -59,6 +59,6 @@ covers connecting native usage.
 | Reporting tools are missing or unauthorized | Repeat step 2. In a cloud session, connect the Sabia connector in Claude instead (step 3). |
 | `/mcp` lists two Sabia servers | The Sabia connector added in Claude has the old address. Remove it in Claude's connector settings and add it again with `https://app.sabia.work/api/mcp/artifacts`. |
 | The Sabia connector answers `DISALLOWED_SOURCE` from Claude Code | It was connected before it covered Claude Code. Disconnect it in Claude's connector settings and connect again. |
-| After updating to 0.9.0, grant changes don't apply or reports aren't linked to sessions | 0.9.0 removed the grant sync, report binding and connector capture from `sabia@sabia`. Token counts keep exporting. Install the complete plugin (above) to get the rest back. |
+| After updating to 0.9.0, grant changes don't apply or reports aren't linked to sessions | 0.9.0 removed the grant sync, report binding and connector capture from `sabia@sabia`. Token counts, and tool output if that grant is on, keep sending. Install the complete plugin (above) to get the rest back, or to disconnect and stop the export. |
 
 Questions: [hello@sabiapartners.ca](mailto:hello@sabiapartners.ca) or [sabiapartners.ca/contact](https://sabiapartners.ca/contact).

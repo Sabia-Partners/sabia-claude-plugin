@@ -52,10 +52,12 @@ Then ask Claude to **"connect Sabia"** for native usage, as its README
 describes.
 
 Up to 0.8.1 the complete plugin was `sabia@sabia`. From 0.9.0 that name is this
-hook-free plugin. Updating keeps exporting token counts, because the exporter
-settings stay in `~/.claude/settings.json`, but grant changes no longer sync,
-reports are no longer linked to their sessions, and connector work is no
-longer captured. Install `sabia@sabia-full` to keep those.
+hook-free plugin. Updating keeps sending token counts, and tool output if that
+grant is on, because the exporter settings stay in `~/.claude/settings.json`.
+But grant changes no longer sync, reports are no longer linked to their
+sessions, and connector work is no longer captured. Install `sabia@sabia-full`
+to keep those, or to stop the export: its disconnect removes those settings.
+Revoking the device in Sabia makes Sabia refuse whatever is still sent.
 
 ## What leaves your machine
 
