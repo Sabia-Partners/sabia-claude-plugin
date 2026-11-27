@@ -1,0 +1,82 @@
+{
+  "all-pass": {
+    "evaluation": "Chart readiness",
+    "result": "Pass",
+    "passed": true,
+    "reviewed_at": "2026-11-20T10:00:00Z",
+    "problems": [],
+    "claims": [],
+    "suggestions": [
+      {
+        "criterion_id": "requirement_2",
+        "criterion": "Labels the chart",
+        "evidence_number": 2,
+        "page": 4,
+        "improvement": "Label the two peaks.",
+        "benefit": "Readers can compare the peaks directly."
+      }
+    ]
+  },
+  "mixed": {
+    "evaluation": "Chart readiness",
+    "result": "Fail",
+    "passed": false,
+    "reviewed_at": "2026-11-20T10:00:00Z",
+    "problems": [
+      {
+        "finding_id": "99999999-9999-4999-8999-999999999999:criterion:requirement_1",
+        "criterion": "Cites its sources",
+        "result": "Not met",
+        "findings": [
+          "The source citation is missing."
+        ],
+        "fix": "Add the missing citation.",
+        "fix_kind": "small",
+        "marked_wrong": false
+      }
+    ],
+    "claims": [],
+    "suggestions": [
+      {
+        "criterion_id": "requirement_2",
+        "criterion": "Labels the chart",
+        "evidence_number": 2,
+        "page": 4,
+        "improvement": "Label the two peaks.",
+        "benefit": "Readers can compare the peaks directly."
+      }
+    ]
+  },
+  "empty": {
+    "evaluation": "Chart readiness",
+    "result": "Pass",
+    "passed": true,
+    "reviewed_at": "2026-11-20T10:00:00Z",
+    "problems": [],
+    "claims": [],
+    "suggestions": []
+  },
+  "legacy": {
+    "evaluation": "Chart readiness",
+    "result": "Pass",
+    "passed": true,
+    "reviewed_at": "2026-11-20T10:00:00Z",
+    "problems": [],
+    "claims": []
+  },
+  "permission-filtered": {
+    "evaluation": "Chart readiness",
+    "result": "Fail",
+    "passed": false,
+    "reviewed_at": "2026-11-20T10:00:00Z",
+    "problems": [
+      {
+        "finding_id": "99999999-9999-4999-8999-999999999999:criterion:requirement_1",
+        "criterion": "Cites its sources",
+        "result": "Not met",
+        "marked_wrong": false
+      }
+    ],
+    "claims": []
+  }
+}
