@@ -14,7 +14,7 @@
     {
       "name": "sabia",
       "source": "./plugins/sabia",
-      "description": "Report the work Claude Code finishes to Sabia. No hooks; for token usage and automatic capture, use the sabia-full marketplace on the full branch."
+      "description": "Review selected text and report completed work in Sabia. No hooks; for token usage and automatic capture, use the sabia-full marketplace on the full branch."
     },
     {
       "name": "sabia-cowork-cloud",

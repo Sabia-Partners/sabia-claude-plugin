@@ -64,9 +64,10 @@ Revoking the device in Sabia makes Sabia refuse whatever is still sent.
 Nothing is sent until you sign in through `/mcp`. After that, Claude sends
 Sabia what it reports through the connector's tools, and only that.
 
-| Sent to Sabia | Never sent |
+| Action | Data sent to Sabia |
 | --- | --- |
-| For each completed piece of work: an action, a short title, the artifact type, its provider reference and identifiers, and available evidence references. | Document bodies, prompts, transcripts, file contents, anything on your machine. |
+| Report completed work | The action, short title, Artifact type, provider identifiers and available evidence references. |
+| Review a passage you select | The selected text, title, source URL when available, and your review goal. Sabia saves the text in your Organization so you can open the reviewed version. |
 
 Titles and references can still contain sensitive information, so review what
 Claude reports the same way you would review a commit message. The

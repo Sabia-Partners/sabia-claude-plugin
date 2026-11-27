@@ -53,7 +53,7 @@ describe("Sabia for Claude Code plugin manifest", () => {
     await expect(readFile(join(root, "hooks/hooks.json"), "utf8")).rejects.toThrow();
     await expect(readdir(join(root, "scripts"))).rejects.toThrow();
     const skills = await readdir(join(root, "skills"));
-    expect(skills).toEqual(["report-artifact"]);
+    expect(skills.sort()).toEqual(["report-artifact", "review-work"]);
   });
 
   it("holds only the file types the directory accepts from unverified organizations", async () => {
@@ -70,6 +70,7 @@ describe("Sabia for Claude Code plugin manifest", () => {
       "README.md",
       "icon.png",
       "skills/report-artifact/SKILL.md",
+      "skills/review-work/SKILL.md",
     ]);
     for (const file of files.filter((name) => name !== "icon.png")) {
       const text = await readFile(join(root, file), "utf8");

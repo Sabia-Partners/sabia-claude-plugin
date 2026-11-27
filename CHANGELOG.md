@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2
+
+Run requested reviews on selected text, including PR descriptions, through the hosted Sabia connector.
+
 ## 0.9.1
 
 - **The listed plugin moves to `plugins/sabia`.** Claude's plugin directory refused 0.9.0 because the repository root also held tests, a maintainer script, `package.json` and the separate `sabia-cowork-cloud` plugin, which it accepts only from verified organizations. The directory now reads `plugins/sabia` alone: the connector, the `report-artifact` skill, the icon, a readme and the license. Nothing changes for people who installed `sabia@sabia`: the marketplace points at the new folder, and the plugin is the same.
